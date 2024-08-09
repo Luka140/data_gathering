@@ -27,8 +27,8 @@ def generate_launch_description():
     current_time = datetime.datetime.now()
     recorder = launch.actions.ExecuteProcess(
         cmd=['ros2', 'bag', 'record', 
-             '-a',                      # Topics
-             '-s', 'mcap',               # Set to MCAP storage format
+             '-a',                                                  # All topics
+             '-s', 'mcap',                                          # Set to MCAP storage format
              '-o', f'{bag_directory}/rosbag2_{current_time}'],            
         output='screen'
         )
