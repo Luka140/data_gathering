@@ -13,14 +13,14 @@ from datetime import datetime
 
 class DataCollector(Node):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__('acf')
         self.init_parameters()
         self.connect_plc()
         self.init_handles()
                 
         # ===================================================================================================
-        grinder_enabled         = False  # ------- Set to True for the grinder to be enabled --------
+        grinder_enabled         = True  # ------- Set to True for the grinder to be enabled --------
         # ===================================================================================================
         
         # Setup ROS interfaces 
@@ -50,7 +50,7 @@ class DataCollector(Node):
             self.get_logger().warn('\n\n\n WARNING: the grinder is turned off - set "grinder_enabled" to "True" to turn it on \n\n\n')
         self.init_time = self.get_clock().now()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
         self.declare_parameter('plc_target_ams',     '5.149.234.177.1.1')    # AMS ID of the PLC
         self.declare_parameter('plc_target_ip',      '169.254.200.16')       # IP of the PLC
          
@@ -61,7 +61,7 @@ class DataCollector(Node):
         
         self.declare_parameter('force_desired',      '10.')                  # ACF force in newtons
         self.declare_parameter('rpm_control_var',    'Flow_Control_valve.iScaledDesiredFlowRate') 
-        self.declare_parameter('desired_flowrate_scaled', '40')        # Percentage of flowrate to control the grinder RPM
+        self.declare_parameter('desired_flowrate_scaled', '40')              # Percentage of flowrate to control the grinder RPM
         
         # Maybe this should change to main.bOnOff but it will currently be overwritten by the HMI interface
         self.declare_parameter('grinder_on_var',    'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder 
@@ -86,7 +86,7 @@ class DataCollector(Node):
         self.timeout                    = rclpy.duration.Duration(seconds=self.timeout_time)
         self.spin_up_duration           = rclpy.duration.Duration(seconds=self.startup_time)
     
-    def connect_plc(self):
+    def connect_plc(self) -> None:
         self.plc = pyads.Connection(ams_net_id      =self.target_ams_plc, 
                                     ams_net_port    =pyads.PORT_TC3PLC1,
                                     ip_address      =self.target_ip_plc)
@@ -97,19 +97,19 @@ class DataCollector(Node):
         self.get_logger().info(f"\nLocal netid: {local_ad.netid} on port {local_ad.port}")
         self.get_logger().info(f"\nPLC State: \n{self.plc.read_state()}")
    
-    def init_handles(self):
+    def init_handles(self) -> None:
         # Using handles with pyads.read/write_by_name is faster than just using the variable name 
         # Do not forget to release any handles that are added - they will reduce the bandwidth to the plc otherwise
         self.rpm_control_handle = self.plc.get_handle(self.rpm_control_var)
         self.time_handle        = self.plc.get_handle(self.time_var)
         self.get_logger().info("Handles initialised")
         
-    def release_handles(self):
+    def release_handles(self) -> None:
         self.plc.release_handle(self.rpm_control_handle)
         self.plc.release_handle(self.time_handle)
         self.plc.del_device_notification(self.rpm_notification_handle)
     
-    def timer_callback(self):
+    def timer_callback(self) -> None:
         
         time = self.get_clock().now()
     
@@ -131,10 +131,10 @@ class DataCollector(Node):
             force = Float32Stamped(header=header, data=self.force_desired)
             self.publisher_force.publish(force)
         
-        # Send command to the plc
+        # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
         self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
 
-    def turn_off_sequence(self):
+    def turn_off_sequence(self) -> None:
         self.get_logger().info(f"Turning off")
         # Retract the acf
         self.force_desired = -5.
@@ -151,7 +151,8 @@ class DataCollector(Node):
         # Stop the command timer 
         self.timer.cancel()
         
-    def rpm_callback(self, notification, data):
+    def rpm_callback(self, notification, data) -> None:
+        # self.get_logger(f'Notification type: {type(notification)} datatype: {type(data)}')
         # This publisher only exists to publish the rpm notifications so it is recorded in the rosbag
         handle, timestamp, value = self.plc.parse_notification(notification, pyads.PLCTYPE_UDINT)
         
@@ -189,19 +190,31 @@ def main(args=None):
 
     try:
         rclpy.spin(data_collector)
-    except Exception as e: 
-        global_logger.error(f'{e}')
+    except (rclpy.executors.ExternalShutdownException, KeyboardInterrupt):
+        global_logger.info("Shutting down due to external shutdown or keyboard interrupt.")
+    except Exception as e:
+        global_logger.error(f"Error encountered: {e}")
+    finally:        
+        global_logger().info(f"Performing cleanup actions")
         
-        # Retract ACF
-        data_collector.publisher_force.publish(Float32Stamped(data=-5., header=Header()))
-        # Turn off grinder and set the goal RPM to zero
-        data_collector.plc.write_by_name(data_collector.grinder_on_var, False)
-        data_collector.plc.write_by_name(self.rpm_control_handle, 0)
-        data_collector.release_handles()
-        data_collector.plc.close()
+        try:
+            # Retract ACF
+            data_collector.publisher_force.publish(Float32Stamped(data=-10., header=Header()))
+        except Exception as e:
+            global_logger().info(f'Error encountered while retracting the ACF during shutdown: \n{e}')
         
-    data_collector.destroy_node()
-    rclpy.shutdown()
+        try:    
+            # Turn off grinder and set the goal RPM to zero
+            data_collector.plc.write_by_name(data_collector.grinder_on_var, False)
+            data_collector.plc.write_by_name(data_collector.rpm_control_handle, 0)
+            data_collector.release_handles()
+            data_collector.plc.close()
+        except Exception as e:
+            global_logger().info(f'Error encountered while turning off the grinder and releasing handles during shutdown: \n{e}')
+            
+        
+        data_collector.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -15,7 +15,7 @@ def generate_launch_description():
         executable="data_collector",
         parameters=[
             {'force_desired':           '10',    # Force of the ACF (N)
-             'desired_flowrate_scaled': '20',    # % of flowrate available for RPM
+             'desired_flowrate_scaled': '40',    # % of flowrate available for RPM
              'max_contact_time':        '5.',    # Duration to grind
              'timeout_time':            '20.',   # Duration before timout
              'timer_period':            '0.050', # Period between force and RPM calls 
@@ -28,9 +28,7 @@ def generate_launch_description():
         package='ferrobotics_acf',
         executable='acf.py',
         parameters=[
-            {'ip': '169.254.200.17',
-            #  'frequency': 1
-             }
+            {'ip': '169.254.200.17'}
         ]
     )
     
