@@ -19,10 +19,6 @@ class DataCollector(Node):
         self.connect_plc()
         self.init_handles()
                 
-        # ===================================================================================================
-        grinder_enabled         = True  # ------- Set to True for the grinder to be enabled --------
-        # ===================================================================================================
-        
         # Setup ROS interfaces 
         self.publisher_force     = self.create_publisher(Float32Stamped, '/acf/force', 10)
         self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
@@ -36,18 +32,18 @@ class DataCollector(Node):
         
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
-        self.rpm_notification_handle = self.plc.add_device_notification("GVL_Var.iINEncoderSpeed", atr, self.rpm_callback)
+        self.rpm_notification_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback)
                
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-10.))
         
         # Set desired RPM to zero and turn on the grinder 
         self.plc.write_by_name(self.rpm_control_var, 0)
-        self.plc.write_by_name(self.grinder_on_var, grinder_enabled)
+        self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
         
         self.get_logger().info('DataCollector initialised')
-        if not grinder_enabled:
-            self.get_logger().warn('\n\n\n WARNING: the grinder is turned off - set "grinder_enabled" to "True" to turn it on \n\n\n')
+        if not self.grinder_enabled:
+            self.get_logger().warn('\n\n\n WARNING: the grinder is turned off - set "grinder_enabled" to "True" to turn it on \n\n')
         self.init_time = self.get_clock().now()
 
     def init_parameters(self) -> None:
@@ -65,6 +61,7 @@ class DataCollector(Node):
         
         # Maybe this should change to main.bOnOff but it will currently be overwritten by the HMI interface
         self.declare_parameter('grinder_on_var',    'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder 
+        self.declare_parameter('grinder_enabled',    False)                 # Turn the grinder on/off with True/False
         self.declare_parameter('time_var',          'GVL_Var.sTimeSt')      # PLC variable for timestamp
                                        
         self.target_ams_plc             = self.get_parameter('plc_target_ams').get_parameter_value().string_value
@@ -79,6 +76,8 @@ class DataCollector(Node):
         
         self.rpm_control_var            = self.get_parameter('rpm_control_var').get_parameter_value().string_value  
         self.grinder_on_var             = self.get_parameter('grinder_on_var').get_parameter_value().string_value   
+        self.grinder_enabled            = self.get_parameter('grinder_enabled').get_parameter_value().bool_value
+        self.get_logger().info(f'Grinder var: {self.grinder_enabled}')
         self.time_var                   = self.get_parameter('time_var').get_parameter_value().string_value   
         
         self.initial_contact_time       = None # Time at which initial contact was made (None until contact) 
@@ -116,12 +115,12 @@ class DataCollector(Node):
         # Turn off if the maximum contact time has been exceeded 
         if self.initial_contact_time is not None and self.initial_contact_time + self.max_contact_time <= time:
             self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
-            self.turn_off_sequence()
+            self.shutdown_sequence()
             
         # Turn off if the maximum runtime for timeout had been exceeded
         if self.init_time + self.timeout < time:
             self.get_logger().info(f"Maximum runtime of {self.timeout_time} seconds exceeded")
-            self.turn_off_sequence()
+            self.shutdown_sequence()
             raise TimeoutError("Maximum time exceeded")
         
         # Send command to the acf if past spin up time 
@@ -134,7 +133,7 @@ class DataCollector(Node):
         # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
         self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
 
-    def turn_off_sequence(self) -> None:
+    def shutdown_sequence(self) -> None:
         self.get_logger().info(f"Turning off")
         # Retract the acf
         self.force_desired = -5.
@@ -190,18 +189,18 @@ def main(args=None):
 
     try:
         rclpy.spin(data_collector)
-    except (rclpy.executors.ExternalShutdownException, KeyboardInterrupt):
-        global_logger.info("Shutting down due to external shutdown or keyboard interrupt.")
+    except (rclpy.executors.ExternalShutdownException, KeyboardInterrupt, TimeoutError):
+        global_logger.info("Shutting down due to external shutdown, keyboard interrupt or timeout")
     except Exception as e:
         global_logger.error(f"Error encountered: {e}")
     finally:        
-        global_logger().info(f"Performing cleanup actions")
+        global_logger.info(f"Performing cleanup actions")
         
         try:
             # Retract ACF
             data_collector.publisher_force.publish(Float32Stamped(data=-10., header=Header()))
         except Exception as e:
-            global_logger().info(f'Error encountered while retracting the ACF during shutdown: \n{e}')
+            global_logger.info(f'Error encountered while retracting the ACF during shutdown: \n{e}')
         
         try:    
             # Turn off grinder and set the goal RPM to zero
@@ -210,7 +209,7 @@ def main(args=None):
             data_collector.release_handles()
             data_collector.plc.close()
         except Exception as e:
-            global_logger().info(f'Error encountered while turning off the grinder and releasing handles during shutdown: \n{e}')
+            global_logger.info(f'Error encountered while turning off the grinder and releasing handles during shutdown: \n{e}')
             
         
         data_collector.destroy_node()
