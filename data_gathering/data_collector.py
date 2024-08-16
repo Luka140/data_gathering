@@ -72,7 +72,7 @@ class DataCollector(Node):
         self.force_desired              = float(self.get_parameter('force_desired').get_parameter_value().string_value)   
         self.timeout_time               = float(self.get_parameter('timeout_time').get_parameter_value().string_value)                           
         self.startup_time               = float(self.get_parameter('time_before_extend').get_parameter_value().string_value)         
-        self.desired_flowrate_scaled    = int(self.get_parameter('desired_flowrate_scaled').get_parameter_value().string_value)
+        self.desired_flowrate_scaled    = float(self.get_parameter('desired_flowrate_scaled').get_parameter_value().string_value)
         
         self.rpm_control_var            = self.get_parameter('rpm_control_var').get_parameter_value().string_value  
         self.grinder_on_var             = self.get_parameter('grinder_on_var').get_parameter_value().string_value   
@@ -121,9 +121,10 @@ class DataCollector(Node):
         if self.init_time + self.timeout < time:
             self.get_logger().info(f"Maximum runtime of {self.timeout_time} seconds exceeded")
             self.shutdown_sequence()
-            raise TimeoutError("Maximum time exceeded")
+            raise TimeoutError("Maximum runtime exceeded")
         
         # Send command to the acf if past spin up time 
+        # Even if the force stays the same, keep publishing force messages otherwise the acf node doesnt publish telemetry
         if self.init_time + self.spin_up_duration <= time:
             header = Header() 
             header.stamp = self.get_clock().now().to_msg()
@@ -131,7 +132,8 @@ class DataCollector(Node):
             self.publisher_force.publish(force)
         
         # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
-        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
+        # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
+        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
 
     def shutdown_sequence(self) -> None:
         self.get_logger().info(f"Turning off")
@@ -145,7 +147,8 @@ class DataCollector(Node):
         # Stop the grinder
         self.plc.write_by_name(self.grinder_on_var, False)
         self.desired_flowrate_scaled = 0 
-        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
+        # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
+        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
         
         # Stop the command timer 
         self.timer.cancel()
