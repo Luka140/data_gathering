@@ -1,15 +1,19 @@
 import rclpy 
 from rclpy.node import Node
 from rclpy.impl import rcutils_logger
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from std_msgs.msg import Header 
 from stamped_std_msgs.msg import Float32Stamped, Int32Stamped, TimeSync
 from ferrobotics_acf.msg import ACFTelemStamped
 
+from data_gathering_msgs.srv import TestRequest
+
 import pyads
 import ctypes
 from datetime import datetime
-
+import math
 
 class DataCollector(Node):
 
@@ -24,11 +28,12 @@ class DataCollector(Node):
         self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
         self.publisher_time_sync = self.create_publisher(TimeSync, '/timesync', 10)
         self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 1)
-        self.timer               = self.create_timer(self.timer_period, self.timer_callback)
+        self.test_server         = self.create_service(TestRequest, 'execute_test', self.start_test, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        
         
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
-        self.time_sync_timer     = self.create_timer(2, self.sync_callback)
+        self.time_sync_timer     = self.create_timer(1, self.sync_callback)
         
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
@@ -44,20 +49,19 @@ class DataCollector(Node):
         self.get_logger().info('DataCollector initialised')
         if not self.grinder_enabled:
             self.get_logger().warn('\n\n\n WARNING: the grinder is turned off - set "grinder_enabled" to "True" to turn it on \n\n')
-        self.init_time = self.get_clock().now()
 
     def init_parameters(self) -> None:
         self.declare_parameter('plc_target_ams',     '5.149.234.177.1.1')    # AMS ID of the PLC
         self.declare_parameter('plc_target_ip',      '169.254.200.16')       # IP of the PLC
          
         self.declare_parameter('timer_period',       '0.050')                # Time in seconds
-        self.declare_parameter('max_contact_time',   '5.')                   # Time to grind in seconds
+        # self.declare_parameter('max_contact_time',   '5.')                   # Time to grind in seconds
         self.declare_parameter('timeout_time',       '20.')                  # Duration before timeout in seconds
         self.declare_parameter('time_before_extend', '2.')                   # Duration after startup before extending the acf
         
-        self.declare_parameter('force_desired',      '10.')                  # ACF force in newtons
+        # self.declare_parameter('force_desired',      '10.')                  # ACF force in newtons
         self.declare_parameter('rpm_control_var',    'Flow_Control_valve.iScaledDesiredFlowRate') 
-        self.declare_parameter('desired_flowrate_scaled', '40')              # Percentage of flowrate to control the grinder RPM
+        # self.declare_parameter('desired_flowrate_scaled', '40')              # Percentage of flowrate to control the grinder RPM
         
         # Maybe this should change to main.bOnOff but it will currently be overwritten by the HMI interface
         self.declare_parameter('grinder_on_var',    'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder 
@@ -68,11 +72,11 @@ class DataCollector(Node):
         self.target_ip_plc              = self.get_parameter('plc_target_ip').get_parameter_value().string_value
         
         self.timer_period               = float(self.get_parameter('timer_period').get_parameter_value().string_value)
-        self.contact_time               = float(self.get_parameter('max_contact_time').get_parameter_value().string_value)
-        self.force_desired              = float(self.get_parameter('force_desired').get_parameter_value().string_value)   
+        # self.contact_time               = float(self.get_parameter('max_contact_time').get_parameter_value().string_value)
+        # self.force_desired              = float(self.get_parameter('force_desired').get_parameter_value().string_value)   
         self.timeout_time               = float(self.get_parameter('timeout_time').get_parameter_value().string_value)                           
         self.startup_time               = float(self.get_parameter('time_before_extend').get_parameter_value().string_value)         
-        self.desired_flowrate_scaled    = float(self.get_parameter('desired_flowrate_scaled').get_parameter_value().string_value)
+        # self.desired_flowrate_scaled    = float(self.get_parameter('desired_flowrate_scaled').get_parameter_value().string_value)
         
         self.rpm_control_var            = self.get_parameter('rpm_control_var').get_parameter_value().string_value  
         self.grinder_on_var             = self.get_parameter('grinder_on_var').get_parameter_value().string_value   
@@ -81,7 +85,7 @@ class DataCollector(Node):
         self.time_var                   = self.get_parameter('time_var').get_parameter_value().string_value   
         
         self.initial_contact_time       = None # Time at which initial contact was made (None until contact) 
-        self.max_contact_time           = rclpy.duration.Duration(seconds=self.contact_time)
+        # self.max_contact_time           = rclpy.duration.Duration(seconds=self.contact_time)
         self.timeout                    = rclpy.duration.Duration(seconds=self.timeout_time)
         self.spin_up_duration           = rclpy.duration.Duration(seconds=self.startup_time)
     
@@ -107,6 +111,26 @@ class DataCollector(Node):
         self.plc.release_handle(self.rpm_control_handle)
         self.plc.release_handle(self.time_handle)
         self.plc.del_device_notification(self.rpm_notification_handle)
+
+    def start_test(self, request, response):
+        self.force_desired = request.force 
+        self.desired_flowrate_scaled = self.rpm_to_flowrate(request.rpm)
+        self.max_contact_time = rclpy.duration.Duration(seconds=math.floor(request.contact_time), 
+                                                        nanoseconds=(request.contact_time % math.floor(request.contact_time)/10**9))
+
+        self.timer = self.create_timer(self.timer_period, self.timer_callback)
+        self.init_time = self.get_clock().now()
+ 
+        response.force = request.force
+        response.rpm = request.rpm
+        response.contact_time = request.contact_time 
+        wait_for_finish_rate = self.create_rate(1)
+        
+        while not self.test_done:
+            wait_for_finish_rate.sleep()
+        response.success = True 
+
+        return response
     
     def timer_callback(self) -> None:
         
@@ -152,6 +176,7 @@ class DataCollector(Node):
         
         # Stop the command timer 
         self.timer.cancel()
+        self._test_done = True 
         
     def rpm_callback(self, notification, data) -> None:
         # self.get_logger(f'Notification type: {type(notification)} datatype: {type(data)}')
@@ -182,6 +207,9 @@ class DataCollector(Node):
         time_msg = rclpy.time.Time(seconds=sec,
                                    nanoseconds=dt_object.microsecond * 1000).to_msg()
         return time_msg
+    
+    def rpm_to_flowrate(self, rpm):
+        return 100 * (rpm - 3400) / 7600
      
             
 def main(args=None):
@@ -189,11 +217,11 @@ def main(args=None):
 
     global_logger = rcutils_logger.RcutilsLogger(name="global_logger")
     data_collector = DataCollector()
-
+    executor = MultiThreadedExecutor()
 
     # The try except block are an attempt at ensuring that the grinder is turned off and retracted if an error occurs
     try:
-        rclpy.spin(data_collector)
+        rclpy.spin(data_collector, executor=executor)
     except (rclpy.executors.ExternalShutdownException, KeyboardInterrupt, TimeoutError):
         global_logger.info("Shutting down due to external shutdown, keyboard interrupt or timeout")
     except Exception as e:
