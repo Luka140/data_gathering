@@ -4,7 +4,7 @@ from rclpy.impl import rcutils_logger
 
 from std_msgs.msg import Header 
 from stamped_std_msgs.msg import Float32Stamped, Int32Stamped, TimeSync
-from ferrobotics_acf.msg import ACFTelem, ACFTelemStamped
+from ferrobotics_acf.msg import ACFTelemStamped
 
 import pyads
 import ctypes
@@ -14,7 +14,7 @@ from datetime import datetime
 class DataCollector(Node):
 
     def __init__(self) -> None:
-        super().__init__('acf')
+        super().__init__('data_collector')
         self.init_parameters()
         self.connect_plc()
         self.init_handles()
@@ -23,7 +23,7 @@ class DataCollector(Node):
         self.publisher_force     = self.create_publisher(Float32Stamped, '/acf/force', 10)
         self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
         self.publisher_time_sync = self.create_publisher(TimeSync, '/timesync', 10)
-        self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 10)
+        self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 1)
         self.timer               = self.create_timer(self.timer_period, self.timer_callback)
         
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
@@ -190,6 +190,8 @@ def main(args=None):
     global_logger = rcutils_logger.RcutilsLogger(name="global_logger")
     data_collector = DataCollector()
 
+
+    # The try except block are an attempt at ensuring that the grinder is turned off and retracted if an error occurs
     try:
         rclpy.spin(data_collector)
     except (rclpy.executors.ExternalShutdownException, KeyboardInterrupt, TimeoutError):
