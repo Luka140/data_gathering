@@ -15,6 +15,7 @@ import ctypes
 from datetime import datetime
 import math
 
+
 class DataCollector(Node):
 
     def __init__(self) -> None:
@@ -28,13 +29,18 @@ class DataCollector(Node):
         self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
         self.publisher_time_sync = self.create_publisher(TimeSync, '/timesync', 10)
         self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 1)
-        self.test_server         = self.create_service(TestRequest, 'execute_test', self.start_test, 1, callback_group=MutuallyExclusiveCallbackGroup())
-        
-        
+        self.test_server         = self.create_service(TestRequest, 'execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
+
+        # Variable is set to True in `shutdown_sequence`. This indicates that the service callback self.start_test can return a finished response to the coordinator. 
+        self._test_done = False 
+        # Variable is set to True if the grinder is shutdown after the maximum runtime is exceeded. Not the most robust metric but temporary solution.
+        self._test_success = False
+
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
         self.time_sync_timer     = self.create_timer(1, self.sync_callback)
-        
+        # TODO move this to the coordinator and make the timer depend on grind time 
+
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
         self.rpm_notification_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback)
@@ -57,7 +63,7 @@ class DataCollector(Node):
         self.declare_parameter('timer_period',       '0.050')                # Time in seconds
         # self.declare_parameter('max_contact_time',   '5.')                   # Time to grind in seconds
         self.declare_parameter('timeout_time',       '20.')                  # Duration before timeout in seconds
-        self.declare_parameter('time_before_extend', '2.')                   # Duration after startup before extending the acf
+        self.declare_parameter('time_before_extend', '2.')                   # Duration after startup before extending the acf to allow for belt spin up
         
         # self.declare_parameter('force_desired',      '10.')                  # ACF force in newtons
         self.declare_parameter('rpm_control_var',    'Flow_Control_valve.iScaledDesiredFlowRate') 
@@ -118,6 +124,8 @@ class DataCollector(Node):
         self.max_contact_time = rclpy.duration.Duration(seconds=math.floor(request.contact_time), 
                                                         nanoseconds=(request.contact_time % math.floor(request.contact_time)/10**9))
 
+        self.get_logger().info(f"Settings received:\n  Force: {self.force_desired} N\n  RPM: {request.rpm}\n  Duration: {request.contact_time} seconds")
+
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
         self.init_time = self.get_clock().now()
  
@@ -126,10 +134,13 @@ class DataCollector(Node):
         response.contact_time = request.contact_time 
         wait_for_finish_rate = self.create_rate(1)
         
-        while not self.test_done:
+        # Hang the response until the test is done as indicated by a shutdown_sequence call
+        while not self._test_done:
             wait_for_finish_rate.sleep()
-        response.success = True 
+        self._test_done = False 
 
+        response.success = self._test_success
+        self._test_success = False  
         return response
     
     def timer_callback(self) -> None:
@@ -138,8 +149,11 @@ class DataCollector(Node):
     
         # Turn off if the maximum contact time has been exceeded 
         if self.initial_contact_time is not None and self.initial_contact_time + self.max_contact_time <= time:
+            self._test_success = True 
             self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
             self.shutdown_sequence()
+            # Reset initial contact time for next test 
+            self.initial_contact_time = None
             
         # Turn off if the maximum runtime for timeout had been exceeded
         if self.init_time + self.timeout < time:
@@ -149,6 +163,7 @@ class DataCollector(Node):
         
         # Send command to the acf if past spin up time 
         # Even if the force stays the same, keep publishing force messages otherwise the acf node doesnt publish telemetry
+        # Could by changed by setting the ACF to a fixed frequency, but this would also only update force settings at this frequency.
         if self.init_time + self.spin_up_duration <= time:
             header = Header() 
             header.stamp = self.get_clock().now().to_msg()
@@ -161,6 +176,7 @@ class DataCollector(Node):
 
     def shutdown_sequence(self) -> None:
         self.get_logger().info(f"Turning off")
+        
         # Retract the acf
         self.force_desired = -5.
         header = Header()
