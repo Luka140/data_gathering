@@ -21,19 +21,19 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # =========================================================================================
-    sample      = "000"   #---------------- Change this! -------------------------------------
+    sample      = "TEST"   #---------------- Change this! -------------------------------------
     # =========================================================================================
     grit        = 120
-    force_settings = [5,6,7]
-    rpm_settings = [7000, 8000, 9000]
+    force_settings = [2,4,6]
+    rpm_settings = [8000, 9000, 10000]
     contact_times = [2]
     plate_thickness = 2.3e-3  # In meters 
 
+    # TODO publish current wear 
     # TODO look at namespace config files 
-    # TODO code for priming belt 
+    # TODO code for priming belt  -- actually just use the same setting with this consistently
     # TODO Add check of whether the maximum extension was reached....
     # TODO the rosbags sample check is not performed now because it is looking at the wrong folder 
-    # TODO publish rpm goal 
     # TODO Rotate the end effector to scan up-down instead of left-right 
 
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
@@ -51,7 +51,7 @@ def generate_launch_description():
         executable="data_collector",
         parameters=[{
              'timeout_time':            '30.',      # Duration before timout of a single test
-             'timer_period':            '0.01',     # Period between force and RPM calls 
+             'timer_period':            '0.01',     # Period between force and RPM calls # TODO to be removed 
              'time_before_extend':      '3',        # Duration between initial spin up of grinder and ACF extension
              'grinder_enabled':         True       # Enable/Disable the grinder with True/False
             }
@@ -79,7 +79,9 @@ def generate_launch_description():
         executable='acf.py',
         parameters=[
             {'ip': '169.254.200.17',
-             'ramp_duration': 0.0}
+             'ramp_duration': 0.0,
+             'frequency': 120,
+             'payload': 0.2}
         ]
     )
 

@@ -27,6 +27,7 @@ class DataCollector(Node):
         # Setup ROS interfaces 
         self.publisher_force     = self.create_publisher(Float32Stamped, '/acf/force', 10)
         self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
+        self.publisher_rpm_req   = self.create_publisher(Int32Stamped, '/grinder/requested_rpm', 10)
         self.publisher_time_sync = self.create_publisher(TimeSync, '/timesync', 10)
         self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 1)
         self.test_server         = self.create_service(TestRequest, 'execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
@@ -46,12 +47,14 @@ class DataCollector(Node):
         self.rpm_notification_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback)
                
         # Retract ACF before startup
-        self.publisher_force.publish(Float32Stamped(header=Header(), data=-10.))
+        self.publisher_force.publish(Float32Stamped(header=Header(), data=-5.))
         
         # Set desired RPM to zero, turn off the grinder and retract acf
         self.plc.write_by_name(self.rpm_control_var, 0)
         self.plc.write_by_name(self.grinder_on_var, False)
         self.force_desired = -5
+
+        self.test_running = False   # Switch ingores telem data if not testing
         
         self.get_logger().info('DataCollector initialised')
         if not self.grinder_enabled:
@@ -64,7 +67,7 @@ class DataCollector(Node):
         self.declare_parameter('timer_period',       '0.008')                # Time in seconds
         # self.declare_parameter('max_contact_time',   '5.')                   # Time to grind in seconds
         self.declare_parameter('timeout_time',       '20.')                  # Duration before timeout in seconds
-        self.declare_parameter('time_before_extend', '2.')                   # Duration after startup before extending the acf to allow for belt spin up
+        self.declare_parameter('time_before_extend', '3.')                   # Duration after startup before extending the acf to allow for belt spin up
         
         # self.declare_parameter('force_desired',      '10.')                  # ACF force in newtons
         self.declare_parameter('rpm_control_var',    'Flow_Control_valve.iScaledDesiredFlowRate') 
@@ -93,7 +96,7 @@ class DataCollector(Node):
         
         self.initial_contact_time       = None # Time at which initial contact was made (None until contact) 
         # self.max_contact_time           = rclpy.duration.Duration(seconds=self.contact_time)
-        self.timeout                    = rclpy.duration.Duration(seconds=self.timeout_time)
+        self.timeout_duration           = rclpy.duration.Duration(seconds=self.timeout_time)
         self.spin_up_duration           = self.startup_time
     
     def connect_plc(self) -> None:
@@ -120,6 +123,7 @@ class DataCollector(Node):
         self.plc.del_device_notification(self.rpm_notification_handle)
 
     def start_test(self, request, response):
+        self.test_running = True 
         self.force_desired = request.force 
         self.desired_flowrate_scaled = self.rpm_to_flowrate(request.rpm)
         self.max_contact_time = rclpy.duration.Duration(seconds=math.floor(request.contact_time), 
@@ -133,6 +137,7 @@ class DataCollector(Node):
         response.contact_time = request.contact_time 
 
         # Turn on grinder 
+        self.publisher_rpm_req.publish(Int32Stamped(data=int(request.rpm), header=Header()))
         self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
         self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
 
@@ -144,6 +149,7 @@ class DataCollector(Node):
         while not self._test_done:
             wait_for_finish_rate.sleep()
         self._test_done = False 
+        self.test_running = False # TODO these two vars do sometime similar, could be combined
 
         response.success = self._test_success
         self._test_success = False  
@@ -152,48 +158,67 @@ class DataCollector(Node):
     def spin_up_period_done(self):
         self.spin_up_wait.cancel()
         # Spin up duration over - start the main loop
-        self.timer = self.create_timer(self.timer_period, self.timer_callback)
-        
-    
-    def timer_callback(self) -> None:
-        
-        time = self.get_clock().now()
-    
-        # Turn off if the maximum contact time has been exceeded 
-        if self.initial_contact_time is not None and self.initial_contact_time + self.max_contact_time <= time:
-            self._test_success = True 
-            self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
-            self.shutdown_sequence()
-            # Reset initial contact time for next test 
-            self.initial_contact_time = None
-            
-        # Turn off if the maximum runtime for timeout had been exceeded
-        if self.init_time + self.timeout < time:
-            self.get_logger().info(f"Maximum runtime of {self.timeout_time} seconds exceeded")
-            self.shutdown_sequence()
-            raise TimeoutError("Maximum runtime exceeded")
-        
-        # Send command to the acf if past spin up time 
-        # Even if the force stays the same, keep publishing force messages otherwise the acf node doesnt publish telemetry
-        # Could by changed by setting the ACF to a fixed frequency, but this would also only update force settings at this frequency.
-        # if time - self.init_time >= self.spin_up_duration:
+        # self.timer = self.create_timer(self.timer_period, self.timer_callback) # TODO To be removed
+        self.test_timed_out_timer = self.create_timer(self.timeout_duration.nanoseconds/10**9, self.timeout)
+
+        # Engage the grinder 
         header = Header() 
         header.stamp = self.get_clock().now().to_msg()
         force = Float32Stamped(header=header, data=self.force_desired)
         self.publisher_force.publish(force)
         
-        # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
-        # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
-        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+    
+    def timer_callback(self) -> None:
+        ...
+        # time = self.get_clock().now()
+    
+        # # Turn off if the maximum contact time has been exceeded 
+        # # if self.initial_contact_time is not None and self.initial_contact_time + self.max_contact_time <= time:
+        # #     self._test_success = True 
+        # #     self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
+        # #     self.shutdown_sequence()
+            
+        # # Turn off if the maximum runtime for timeout had been exceeded (in case there was no contact )
+        # if self.init_time + self.timeout < time:
+        #     self.get_logger().info(f"Maximum runtime of {self.timeout_time} seconds exceeded")
+        #     self.shutdown_sequence()
+        #     raise TimeoutError("Maximum runtime exceeded")
+        
+        # # Send command to the acf if past spin up time 
+        # # Even if the force stays the same, keep publishing force messages otherwise the acf node doesnt publish telemetry
+        # # Could by changed by setting the ACF to a fixed frequency, but this would also only update force settings at this frequency.
+        # # if time - self.init_time >= self.spin_up_duration:
+        # header = Header() 
+        # header.stamp = self.get_clock().now().to_msg()
+        # force = Float32Stamped(header=header, data=self.force_desired)
+        # self.publisher_force.publish(force)
+        
+        # # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
+        # # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
+        # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+
+    def contact_time_exceeded(self):
+        self.test_finished_timer.cancel()   # TODO to be removed
+        self.initial_contact_time = None        # Reset for next test 
+        self._test_success = True               # Set success flag 
+        self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
+        self.shutdown_sequence()
+
+    def timeout(self):
+        self.test_timed_out_timer.cancel()
+        self.initial_contact_time = None        # Reset for next test 
+        self._test_succes = False   
+        self.get_logger().info(f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached')
+        self.shutdown_sequence()
 
     def shutdown_sequence(self) -> None:
         self.get_logger().info(f"Turning off")
         
         # Retract the acf
-        self.force_desired = -5.
+        # self.force_desired = -5.
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
-        force = Float32Stamped(header=header, data=self.force_desired)
+        force = Float32Stamped(header=header, data=-5.)
         self.publisher_force.publish(force)
         
         # Stop the grinder
@@ -203,7 +228,7 @@ class DataCollector(Node):
         self.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
         
         # Stop the command timer 
-        self.timer.cancel()
+        # self.timer.cancel() # TODO to be removed 
         self._test_done = True 
         
     def rpm_callback(self, notification, data) -> None:
@@ -215,9 +240,15 @@ class DataCollector(Node):
         self.publisher_rpm.publish(Int32Stamped(data=value, header=header))
     
     def telem_callback(self, msg:ACFTelemStamped):
+        if not self.test_running:
+            return 
+
         force_abs_relative_error = abs((self.force_desired - msg.telemetry.force) / (self.force_desired + 1e-3)) # Added 1 mN in divisor to avoid div by zero
         if self.initial_contact_time is None and msg.telemetry.in_contact and (force_abs_relative_error < 0.1):
             self.initial_contact_time = self.get_clock().now()
+
+            # Shutdown after contact duration is reached
+            self.test_finished_timer = self.create_timer(self.max_contact_time.nanoseconds/10**9, self.contact_time_exceeded)
             
     def sync_callback(self):
         sync_msg = TimeSync()
