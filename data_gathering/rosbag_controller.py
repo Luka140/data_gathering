@@ -13,7 +13,8 @@ class RosbagRecorder:
         self.logger = logger
 
         # Ensure bag directory exists
-        os.makedirs(self.bag_directory, exist_ok=True)
+        if not os.path.isdir(self.bag_directory):
+            os.makedirs(self.bag_directory, exist_ok=True)
 
     def start_recording(self, name_suffix):
         if self.bag_process is not None and self.bag_process.poll() is None:
@@ -23,7 +24,7 @@ class RosbagRecorder:
         # Generate a unique bag name with timestamp
         current_time = datetime.now()
         timestamp = f'{str(current_time.date()).strip()}_{str(current_time.time()).strip().split(".")[0]}'
-        bag_name = f"{self.bag_prefix}_{timestamp}_{name_suffix}"
+        bag_name = f"{self.bag_prefix}_{name_suffix}_{timestamp}"
         bag_path = os.path.join(self.bag_directory, bag_name)
 
         # Build the ros2 bag record command
@@ -56,5 +57,6 @@ class RosbagRecorder:
             self.bag_process = None
             return False, 'Recording process killed after timeout.'
         except Exception as e:
+            # 
             self.logger.error(f'Failed to stop recording: {e}')
             return False, f'Failed to stop recording: {e}'

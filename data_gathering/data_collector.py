@@ -48,9 +48,10 @@ class DataCollector(Node):
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-10.))
         
-        # Set desired RPM to zero and turn on the grinder 
+        # Set desired RPM to zero, turn on the grinder and retract acf
         self.plc.write_by_name(self.rpm_control_var, 0)
         self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
+        self.force_desired = -5
         
         self.get_logger().info('DataCollector initialised')
         if not self.grinder_enabled:

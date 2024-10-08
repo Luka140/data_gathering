@@ -3,17 +3,24 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 
 from rcl_interfaces.msg import ParameterDescriptor 
-from data_gathering_msgs.srv import TestRequest 
+from data_gathering_msgs.srv import TestRequest,  RequestPCL, RequestPCLVolumeDiff
 from std_msgs.msg import Empty
+from sensor_msgs.msg import PointCloud2
+from std_srvs.srv import Trigger 
 
 import copy
 import os 
 import pathlib 
 from datetime import datetime
 import pandas as pd 
+import numpy as np
+import open3d as o3d
+from functools import partial
 
 from data_gathering.rosbag_controller import RosbagRecorder
 
+# TODO on subsequent tests there is no 'initial scan' required as it will be the same as the previous 
+# TODO make mesh constructor have 'save pcl' as a parameter -- turn off
 class TestCoordinator(Node):
 
     def __init__(self):
@@ -25,8 +32,10 @@ class TestCoordinator(Node):
         self.declare_parameter("sample", "")
 
         self.declare_parameter("wear_threshold", 10e6)
+        self.declare_parameter("data_path", "")
         self.declare_parameter("wear_tracking_path", "")
         self.declare_parameter("test_tracker_path", "")
+        self.declare_parameter("record_path", "")
 
         self.force_settings         = self.get_parameter("force_settings").value
         self.rpm_settings           = self.get_parameter("rpm_settings").value
@@ -35,10 +44,20 @@ class TestCoordinator(Node):
         self.sample_id              = self.get_parameter("sample").value
 
         self.belt_threshold         = self.get_parameter("wear_threshold").value
+        self.data_path              = pathlib.Path(self.get_parameter('data_path').value)
         self.belt_tracking_path     = pathlib.Path(self.get_parameter("wear_tracking_path").value)
         self.performed_tests_path   = pathlib.Path(self.get_parameter("test_tracker_path").value)
-        if self.performed_tests_path.samefile('.'):
-            self.performed_tests_path   = self.belt_tracking_path.parent.parent / 'performed_tests.csv'
+        self.record_path            = pathlib.Path(self.get_parameter("record_path").value)
+
+        # Set default paths if any parameter is empty
+        if not self.data_path or self.data_path == pathlib.Path('.'):
+            self.data_path = pathlib.Path.cwd() / 'src' / 'data_gathering' / 'data'
+        if not self.belt_tracking_path or self.belt_tracking_path == pathlib.Path('.'):
+            self.belt_tracking_path = self.data_path / 'belt_tracking.csv'
+        if not self.performed_tests_path or self.performed_tests_path == pathlib.Path('.'):
+            self.performed_tests_path = self.data_path / 'performed_tests.csv'
+        if not self.record_path or self.record_path == pathlib.Path('.'):
+            self.record_path = self.data_path / 'test_data'
 
         self.test_setting_validity()
         self.settings = self.create_setting_list()
@@ -50,28 +69,50 @@ class TestCoordinator(Node):
         self.user_changed_belt      = self.create_subscription(Empty, "changed_belt", self.usr_changed_belt, 1)
         self.failure_publisher      = self.create_publisher(Empty, 'test_failure', 1)
 
-        # Variables to be changed by user inputs 
-        self._run_next = None           # Set to true by 'continue_testing' or 'stop_testing' topics
-        self._belt_replaced = False     # Set to true by the 'changed_belt' topic
-        self.user_input_check_rate = self.create_rate(1, self.get_clock())
+        self.scan_surface_trigger     = self.create_client(RequestPCL, 'execute_loop')      
+        self.calculate_volume_trigger = self.create_client(RequestPCLVolumeDiff, 'calculate_volume_lost')   
+
+        self.ready_for_next = True # Flag to see whether a test is in progress right now or the next test can be started on user input
 
         current_wear = self.read_initial_wear()
         if current_wear > self.belt_threshold:
             raise ValueError(f"The wear threshold {self.belt_threshold} has been exceeded ({current_wear}). Please change the belt.")
 
-        self.rosbag = RosbagRecorder(['-a'],  'ros_bags', 'rosbag2', self.get_logger())
+        self.rosbag = RosbagRecorder(['-a'],  str(self.record_path), 'rosbag2', self.get_logger())
 
-        self.startup_delay = 10
+        self.startup_delay = 5
         self.get_logger().info(f"Test coordinator started -- Executing first test in {self.startup_delay} seconds")
         self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
 
-
+    
     def execute_test(self):
         self.test_start_countdown.cancel()
+        self.ready_for_next = False 
         self.rosbag.start_recording(self.generate_rosbag_suffix())
 
-        # TODO Request initial scan of the object 
+        # Perform an initial scan if this is the first test
+        if self.test_index == 0:
+            scan_call = self.scan_surface_trigger.call_async(RequestPCL.Request())
+            scan_call.add_done_callback(self.initial_scan_done_callback)
+        else:
+            # On subsequent tests the 'initial' is the 'final' of the previous test
+            self.initial_scan = self.final_scan 
 
+            # Perform grind 
+            self.call_test()
+        
+    def initial_scan_done_callback(self, future):
+        result = future.result()
+        success = result.success
+        self.initial_scan = result.pointcloud
+        if success:
+            # Perform grind 
+            self.call_test()
+        else:
+            self.get_logger().error("Scan service failed...")
+
+    def call_test(self):
+        # Perform grind 
         request = self.settings[self.test_index]
         call = self.test_client.call_async(request)
         call.add_done_callback(self.test_finished_callback)
@@ -86,15 +127,31 @@ class TestCoordinator(Node):
             self.rosbag.stop_recording()
             return
         
-        # TODO request callback from the LLS to calculate lost volume 
-        # TODO store the set of pointclouds for traceability 
-        
-        self.rosbag.stop_recording()
-        
+        # Scan after the grind 
+        scan_call = self.scan_surface_trigger.call_async(RequestPCL.Request())
+        scan_call.add_done_callback(self.second_scan_done_callback)
+
         self.update_wear_history(result.force, result.rpm, result.contact_time)
 
+    def second_scan_done_callback(self, future):
+        self.final_scan = future.result().pointcloud
+        
+        # Request lost volume computation
+        req = RequestPCLVolumeDiff.Request()
+        req.initial_pointcloud = self.initial_scan
+        req.final_pointcloud = self.final_scan
+        path = self.write_pcl_pair(self.initial_scan, self.final_scan)
+
+        volume_call = self.calculate_volume_trigger.call_async(req)
+        volume_call.add_done_callback(partial(self.volume_calc_done_callback, path))
+
+    def volume_calc_done_callback(self, data_path, future):
+        result = future.result()
+        self.write_pcl(result.difference_pointcloud, data_path / 'difference_pcl.ply')
+
+        self.rosbag.stop_recording()
+        
         self.test_index += 1     
-        remaining_tests = len(self.settings) - self.test_index
         if self.test_index >= len(self.settings):
             self.get_logger().info("All queued tests have been executed")
             return 
@@ -102,21 +159,41 @@ class TestCoordinator(Node):
         # Check whether the belt is worn down. If so - wait for replacement
         current_wear = self.read_initial_wear()
         if current_wear > self.belt_threshold:
-            self.wait_for_belt_change(current_wear)
+            self.get_logger().info(f"The wear metric ({current_wear}) has exceeded the threshold of ({self.belt_threshold}). Please change the belt")
+        else:
+            self.ask_next_test()
 
+    #
+    # Methods related to user inputs (chaning the belt and executing the next test)
+    #
+
+    def ask_next_test(self):
         # Check whether the user wants to continue testing 
-        self.get_logger().info(f"There are {remaining_tests} remaining tests to be run. Do you want to continue?")        
-        while self._run_next is None:
-            self.user_input_check_rate.sleep()
-        if not self._run_next: 
-            self.get_logger().info(f"The remaining {remaining_tests} tests will not be run. Exiting...")
-            return 
-        self._run_next = None   # Reset for next test 
+        remaining_tests = len(self.settings) - self.test_index
+        self.get_logger().info(f"There are {remaining_tests} remaining tests to be run. Do you want to continue? - Use the 'continue_testing' topic'")        
+        self.ready_for_next = True 
 
-        # Start the next test 
-        self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
-        self.get_logger().info(f"Next test starting in {self.startup_delay} seconds.")
+    def usr_changed_belt(self, _):
+        # The user signaled that the belt has been changed
+        # Change the tracked belt file. 
+        self.belt_change()
 
+        # The worn belt has been changed. Move on to the next test.
+        self.ask_next_test()
+
+    def usr_stop_testing(self, _):
+        self.get_logger().info(f"The remaining tests will not be run. Exiting...")
+    
+    def usr_continue_testing(self, _):
+        if self.ready_for_next:
+            self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
+            self.get_logger().info(f"Next test starting in {self.startup_delay} seconds.")
+        else:
+            self.get_logger().info("Not ready for the next test yet.")     
+
+    #
+    # Methods related to tracking the belt wear 
+    #
 
     def update_wear_history(self, force, rpm, time):
         with open(self.belt_tracking_path, 'a') as f:
@@ -127,22 +204,7 @@ class TestCoordinator(Node):
     def read_initial_wear(self):
         wear_csv = pd.read_csv(self.belt_tracking_path, delimiter=',')
         return self.wear_metric_calculation(wear_csv['force'], wear_csv['rpm'], wear_csv['contact_time'])
-    
-    def wait_for_belt_change(self, current_wear):
-        """
-        This function pauses testing until self._belt_replaced switches to true. This happens when the user sends an Empty msg to the 'changed_belt' topic.
-        A new wear tracking file is then created using self.belt_change().
-        """
-
-        self.get_logger().info(f"The wear metric ({current_wear}) has exceeded the threshold of ({self.belt_threshold}). Please change the belt")
-
-        while not self._belt_replaced:
-            self.user_input_check_rate.sleep()
-            
-        # Create a new file for tracking wear 
-        self.belt_change()
-        self._belt_replaced = False 
-    
+        
     def belt_change(self):
         """
         Method to create a new belt wear tracing file once the belt is replaced.
@@ -167,14 +229,17 @@ class TestCoordinator(Node):
 
         with open(self.belt_tracking_path, "w") as f:
             f.write('force,rpm,contact_time\n')
-            f.write('0,0,0\n')
-            
+            f.write('0,0,0\n')       
 
     def wear_metric_calculation(self, force, rpm, time):
         """
         This is a metric by which wear belt wear is measured, it does not have an exact physical meaning. 
         """
         return sum(force * rpm * time)
+
+    #
+    # Methods related to setting the test parameters
+    #
 
     def create_setting_list(self):
         settings = []
@@ -198,20 +263,51 @@ class TestCoordinator(Node):
         negatives = [setting for setting in [*self.force_settings, *self.rpm_settings, *self.contact_time_settings] if setting < 0]
         if len(negatives) > 0:
             raise ValueError("Force, RPM and contact time should be positive")
-        
-    def usr_stop_testing(self, _):
-        self._run_next = False
-    
-    def usr_continue_testing(self, _):
-        self._run_next = True
 
-    def usr_changed_belt(self, _):
-        self._belt_replaced = True
+
+    #
+    #   Methods related to storing the data
+    #
 
     def generate_rosbag_suffix(self):
         test_settings = self.settings[self.test_index]
         return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_t{test_settings.contact_time}'
 
+    def convert_ros_to_open3d(self, pcl_msg):
+        # Extract the point cloud data from the ROS2 message
+        
+        loaded_array = np.frombuffer(pcl_msg.data, dtype=np.float32).reshape(-1, 3) 
+        o3d_pcl = o3d.geometry.PointCloud()
+        o3d_pcl.points = o3d.utility.Vector3dVector(loaded_array)
+        return o3d_pcl
+
+    def write_pcl(self, pointcloud: PointCloud2, path):
+        pcl = self.convert_ros_to_open3d(pointcloud)
+        if pcl.is_empty():
+            pathtxt = str(path).strip('ply') + 'txt'
+            with open(pathtxt, 'w') as f:
+                f.write('Empty pointcloud')
+        else:
+            o3d.io.write_point_cloud(str(path), pcl)
+
+    def write_pcl_pair(self, pre_grind: PointCloud2, post_grind: PointCloud2):
+        current_time = datetime.now()
+        timestamp = f'{str(current_time.date()).strip()}_{str(current_time.time()).strip().split(".")[0]}'
+        path = self.record_path / f'pcl_{self.generate_rosbag_suffix()}_{timestamp}'
+        if not path.exists():
+            os.mkdir(path)
+
+        # Write initial point cloud
+        pcl_initial_path = path /'pre_grind_pointcloud.ply'
+        self.get_logger().info(f"Saving initial pointcloud to: {pcl_initial_path}")
+        self.write_pcl(pre_grind, pcl_initial_path)
+        
+        # Write postgrind point cloud
+        pcl_postgrind_path = path / f'post_grind_pointcloud.ply'
+        self.get_logger().info(f"Saving postgrind pointcloud to: {pcl_postgrind_path}")
+        self.write_pcl(post_grind, pcl_postgrind_path)
+        
+        return path
 
     
 def main(args=None):
