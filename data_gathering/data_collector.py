@@ -48,9 +48,9 @@ class DataCollector(Node):
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-10.))
         
-        # Set desired RPM to zero, turn on the grinder and retract acf
+        # Set desired RPM to zero, turn off the grinder and retract acf
         self.plc.write_by_name(self.rpm_control_var, 0)
-        self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
+        self.plc.write_by_name(self.grinder_on_var, False)
         self.force_desired = -5
         
         self.get_logger().info('DataCollector initialised')
@@ -61,7 +61,7 @@ class DataCollector(Node):
         self.declare_parameter('plc_target_ams',     '5.149.234.177.1.1')    # AMS ID of the PLC
         self.declare_parameter('plc_target_ip',      '169.254.200.16')       # IP of the PLC
          
-        self.declare_parameter('timer_period',       '0.050')                # Time in seconds
+        self.declare_parameter('timer_period',       '0.008')                # Time in seconds
         # self.declare_parameter('max_contact_time',   '5.')                   # Time to grind in seconds
         self.declare_parameter('timeout_time',       '20.')                  # Duration before timeout in seconds
         self.declare_parameter('time_before_extend', '2.')                   # Duration after startup before extending the acf to allow for belt spin up
@@ -94,7 +94,7 @@ class DataCollector(Node):
         self.initial_contact_time       = None # Time at which initial contact was made (None until contact) 
         # self.max_contact_time           = rclpy.duration.Duration(seconds=self.contact_time)
         self.timeout                    = rclpy.duration.Duration(seconds=self.timeout_time)
-        self.spin_up_duration           = rclpy.duration.Duration(seconds=self.startup_time)
+        self.spin_up_duration           = self.startup_time
     
     def connect_plc(self) -> None:
         self.plc = pyads.Connection(ams_net_id      =self.target_ams_plc, 
@@ -127,14 +127,19 @@ class DataCollector(Node):
 
         self.get_logger().info(f"Settings received:\n  Force: {self.force_desired} N\n  RPM: {request.rpm}\n  Duration: {request.contact_time} seconds")
 
-        self.timer = self.create_timer(self.timer_period, self.timer_callback)
-        self.init_time = self.get_clock().now()
- 
+        self.init_time = self.get_clock().now() 
         response.force = request.force
         response.rpm = request.rpm
         response.contact_time = request.contact_time 
+
+        # Turn on grinder 
+        self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
+        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+
+        # Start after spin up duration
+        self.spin_up_wait = self.create_timer(self.spin_up_duration, self.spin_up_period_done)
+
         wait_for_finish_rate = self.create_rate(1)
-        
         # Hang the response until the test is done as indicated by a shutdown_sequence call
         while not self._test_done:
             wait_for_finish_rate.sleep()
@@ -143,6 +148,12 @@ class DataCollector(Node):
         response.success = self._test_success
         self._test_success = False  
         return response
+    
+    def spin_up_period_done(self):
+        self.spin_up_wait.cancel()
+        # Spin up duration over - start the main loop
+        self.timer = self.create_timer(self.timer_period, self.timer_callback)
+        
     
     def timer_callback(self) -> None:
         
@@ -165,11 +176,11 @@ class DataCollector(Node):
         # Send command to the acf if past spin up time 
         # Even if the force stays the same, keep publishing force messages otherwise the acf node doesnt publish telemetry
         # Could by changed by setting the ACF to a fixed frequency, but this would also only update force settings at this frequency.
-        if self.init_time + self.spin_up_duration <= time:
-            header = Header() 
-            header.stamp = self.get_clock().now().to_msg()
-            force = Float32Stamped(header=header, data=self.force_desired)
-            self.publisher_force.publish(force)
+        # if time - self.init_time >= self.spin_up_duration:
+        header = Header() 
+        header.stamp = self.get_clock().now().to_msg()
+        force = Float32Stamped(header=header, data=self.force_desired)
+        self.publisher_force.publish(force)
         
         # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
         # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
@@ -189,7 +200,7 @@ class DataCollector(Node):
         self.plc.write_by_name(self.grinder_on_var, False)
         self.desired_flowrate_scaled = 0 
         # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
-        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+        self.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
         
         # Stop the command timer 
         self.timer.cancel()

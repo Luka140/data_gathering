@@ -21,17 +21,20 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # =========================================================================================
-    sample      = "TEST"   #---------------- Change this! -------------------------------------
+    sample      = "000"   #---------------- Change this! -------------------------------------
     # =========================================================================================
-    grit        = 60
+    grit        = 120
     force_settings = [5,6,7]
     rpm_settings = [7000, 8000, 9000]
     contact_times = [2]
+    plate_thickness = 2.3e-3  # In meters 
 
-    # TODO add parameter for thickness in calc 
-    # TODO adjust trajectory to be slanted scan instead of rotation..
-    # TODO and shorten path
-    # TODO np from buffer?
+    # TODO look at namespace config files 
+    # TODO code for priming belt 
+    # TODO Add check of whether the maximum extension was reached....
+    # TODO the rosbags sample check is not performed now because it is looking at the wrong folder 
+    # TODO publish rpm goal 
+    # TODO Rotate the end effector to scan up-down instead of left-right 
 
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
@@ -50,7 +53,7 @@ def generate_launch_description():
              'timeout_time':            '30.',      # Duration before timout of a single test
              'timer_period':            '0.01',     # Period between force and RPM calls 
              'time_before_extend':      '3',        # Duration between initial spin up of grinder and ACF extension
-             'grinder_enabled':         False       # Enable/Disable the grinder with True/False
+             'grinder_enabled':         True       # Enable/Disable the grinder with True/False
             }
         ]
     )
@@ -65,7 +68,8 @@ def generate_launch_description():
              'grit':                    grit,              # Grit of the belt (only for logging purposes)
              'sample':                  sample,            # Sample number (only for logging purposes)
              'wear_threshold':          wear_threshold,    # Threshold of the belt wear metric before requiring a change
-             'wear_tracking_path':      "src/data_gathering/data/belt_data/beltid_2_grit_120.csv",
+             'plate_thickness':         plate_thickness,   
+             'wear_tracking_path':      "src/data_gathering/data/belt_data/beltid_1_grit_120.csv",
             }
         ]
     )
@@ -94,7 +98,8 @@ def generate_launch_description():
             'loop_on_service': 'true',        
             'auto_loop': 'false',             
             'save_mesh': 'false',             
-            'bbox_max': '1.0'                
+            'bbox_max': '0.0',
+            'local_bbox_max': '0.2'                   
         }.items()
     )
 
@@ -106,7 +111,7 @@ def generate_launch_description():
         
     if any([rpm < 3400 for rpm in rpm_settings]):
         raise ValueError('The desired rpm must be above 3400')
-    bag_directory = 'ros_bags'
+    bag_directory = 'src/data_gathering/data/test_data'
     if sample != 'TEST' and len([file for file in pathlib.Path(bag_directory).iterdir() if f'sample{sample}' in str(file)]) > 0:
         raise ValueError(f"Sample {sample} already exists in directory {bag_directory}\ndon't forget to change the sample number")
         

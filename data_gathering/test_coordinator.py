@@ -19,8 +19,7 @@ from functools import partial
 
 from data_gathering.rosbag_controller import RosbagRecorder
 
-# TODO on subsequent tests there is no 'initial scan' required as it will be the same as the previous 
-# TODO make mesh constructor have 'save pcl' as a parameter -- turn off
+
 class TestCoordinator(Node):
 
     def __init__(self):
@@ -30,6 +29,7 @@ class TestCoordinator(Node):
         self.declare_parameter("contact_time_settings", [], ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("grit", 120)
         self.declare_parameter("sample", "")
+        self.declare_parameter("plate_thickness", 0.)
 
         self.declare_parameter("wear_threshold", 10e6)
         self.declare_parameter("data_path", "")
@@ -42,6 +42,7 @@ class TestCoordinator(Node):
         self.contact_time_settings  = self.get_parameter("contact_time_settings").value
         self.grit                   = self.get_parameter("grit").value
         self.sample_id              = self.get_parameter("sample").value
+        self.plate_thickness        = self.get_parameter("plate_thickness").value 
 
         self.belt_threshold         = self.get_parameter("wear_threshold").value
         self.data_path              = pathlib.Path(self.get_parameter('data_path').value)
@@ -84,6 +85,9 @@ class TestCoordinator(Node):
         self.get_logger().info(f"Test coordinator started -- Executing first test in {self.startup_delay} seconds")
         self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
 
+    ############################################################################################################################################
+    # Main pipeline callback chain
+    ############################################################################################################################################
     
     def execute_test(self):
         self.test_start_countdown.cancel()
@@ -138,8 +142,9 @@ class TestCoordinator(Node):
         
         # Request lost volume computation
         req = RequestPCLVolumeDiff.Request()
-        req.initial_pointcloud = self.initial_scan
-        req.final_pointcloud = self.final_scan
+        req.initial_pointcloud  = self.initial_scan
+        req.final_pointcloud    = self.final_scan
+        req.plate_thickness     = self.plate_thickness
         path = self.write_pcl_pair(self.initial_scan, self.final_scan)
 
         volume_call = self.calculate_volume_trigger.call_async(req)
@@ -163,9 +168,9 @@ class TestCoordinator(Node):
         else:
             self.ask_next_test()
 
-    #
+    ############################################################################################################################################
     # Methods related to user inputs (chaning the belt and executing the next test)
-    #
+    ############################################################################################################################################
 
     def ask_next_test(self):
         # Check whether the user wants to continue testing 
@@ -191,9 +196,9 @@ class TestCoordinator(Node):
         else:
             self.get_logger().info("Not ready for the next test yet.")     
 
-    #
+    ############################################################################################################################################
     # Methods related to tracking the belt wear 
-    #
+    ############################################################################################################################################
 
     def update_wear_history(self, force, rpm, time):
         with open(self.belt_tracking_path, 'a') as f:
@@ -237,9 +242,9 @@ class TestCoordinator(Node):
         """
         return sum(force * rpm * time)
 
-    #
+    ############################################################################################################################################
     # Methods related to setting the test parameters
-    #
+    ############################################################################################################################################
 
     def create_setting_list(self):
         settings = []
@@ -265,9 +270,9 @@ class TestCoordinator(Node):
             raise ValueError("Force, RPM and contact time should be positive")
 
 
-    #
+    ############################################################################################################################################
     #   Methods related to storing the data
-    #
+    ############################################################################################################################################
 
     def generate_rosbag_suffix(self):
         test_settings = self.settings[self.test_index]
