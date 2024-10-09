@@ -16,7 +16,6 @@ from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-
     pkg = "data_gathering"
     ld = LaunchDescription()
 
@@ -36,7 +35,7 @@ def generate_launch_description():
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
 
-    wear_threshold = 5e6                # Threshold of force * rpm * time after which the belt needs to be changed
+    wear_threshold = 5e6    # Threshold of force * rpm * time after which the belt needs to be changed
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
@@ -48,11 +47,10 @@ def generate_launch_description():
         package=pkg,
         executable="data_collector",
         parameters=[{
-             'timeout_time':            '30.',      # Duration before timeout of a single test
-             'timer_period':            '0.01',     # Period between force and RPM calls # TODO to be removed 
-             'time_before_extend':      '3',        # Duration between initial spin up of grinder and ACF extension
-             'grinder_enabled':         True,       # Enable/Disable the grinder with True/False
-             'max_acf_extension':       '0.3'      # Extension of the acf before hitting its endstop in meters 
+             'timeout_time':            30.,    # Duration before timeout of a single test
+             'time_before_extend':      3.,     # Duration between initial spin up of grinder and ACF extension
+             'grinder_enabled':         True,   # Enable/Disable the grinder with True/False
+             'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in meters 
             }
         ]
     )

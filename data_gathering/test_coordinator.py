@@ -130,7 +130,7 @@ class TestCoordinator(Node):
         result = future.result()
         success = result.success
 
-        
+
         
         if not success:
             self.get_logger().error("The test seems to have failed")
@@ -266,9 +266,9 @@ class TestCoordinator(Node):
         settings = []
         for i in range(max(len(self.force_settings), len(self.rpm_settings), len(self.contact_time_settings))):
             request = TestRequest.Request()
-            request.force = float(self.force_settings[i%len(self.force_settings)])
-            request.rpm = float(self.rpm_settings[i%len(self.rpm_settings)])
-            request.contact_time = float(self.contact_time_settings[i%len(self.contact_time_settings)])
+            request.force           = float(self.force_settings[i%len(self.force_settings)])
+            request.rpm             = float(self.rpm_settings[i%len(self.rpm_settings)])
+            request.contact_time    = float(self.contact_time_settings[i%len(self.contact_time_settings)])
             settings.append(request)
         return settings 
 

@@ -34,13 +34,14 @@ class DataCollector(Node):
 
         # Variable is set to True in `shutdown_sequence`. This indicates that the service callback self.start_test can return a finished response to the coordinator. 
         self._test_done = False 
-        # Variable is set to True if the grinder is shutdown after the maximum runtime is exceeded. Not the most robust metric but temporary solution.
         self._test_success = None
         self._failure_message = ''
+        self.initial_contact_time = None 
+        self.test_running = False           # Switch ingores telem data if not testing
 
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
-        self.time_sync_timer     = self.create_timer(1, self.sync_callback)
+        self.time_sync_timer     = self.create_timer(0.5, self.sync_callback)
 
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
@@ -48,61 +49,44 @@ class DataCollector(Node):
                
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-5.))
+        self.force_desired = -5
         
         # Set desired RPM to zero, turn off the grinder and retract acf
         self.plc.write_by_name(self.rpm_control_var, 0)
         self.plc.write_by_name(self.grinder_on_var, False)
-        self.force_desired = -5
-
-        self.test_running = False   # Switch ingores telem data if not testing
         
+       
         self.get_logger().info('DataCollector initialised')
         if not self.grinder_enabled:
             self.get_logger().warn('\n\n\n WARNING: the grinder is turned off - set "grinder_enabled" to "True" to turn it on \n\n')
 
     def init_parameters(self) -> None:
-        self.declare_parameter('plc_target_ams',     '5.149.234.177.1.1')    # AMS ID of the PLC
-        self.declare_parameter('plc_target_ip',      '169.254.200.16')       # IP of the PLC
+        self.declare_parameter('plc_target_ams', '5.149.234.177.1.1')    # AMS ID of the PLC
+        self.declare_parameter('plc_target_ip', '169.254.200.16')        # IP of the PLC
          
-        self.declare_parameter('timer_period',       '0.008')                # Time in seconds
-        # self.declare_parameter('max_contact_time',   '5.')                   # Time to grind in seconds
-        self.declare_parameter('timeout_time',       '20.')                  # Duration before timeout in seconds
-        self.declare_parameter('time_before_extend', '3.')                   # Duration after startup before extending the acf to allow for belt spin up
+        self.declare_parameter('timeout_time', 20.0)                     # Duration before timeout in seconds (float)
+        self.declare_parameter('time_before_extend', 3.0)                # Duration after startup before extending the acf to allow for belt spin-up (float)
         
-        # self.declare_parameter('force_desired',      '10.')                  # ACF force in newtons
-        self.declare_parameter('rpm_control_var',    'Flow_Control_valve.iScaledDesiredFlowRate') 
-        # self.declare_parameter('desired_flowrate_scaled', '40')              # Percentage of flowrate to control the grinder RPM
-        
+        self.declare_parameter('rpm_control_var', 'Flow_Control_valve.iScaledDesiredFlowRate') 
+        self.declare_parameter('grinder_on_var', 'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder
+        self.declare_parameter('grinder_enabled', False)                 # Turn the grinder on/off with True/False
+        self.declare_parameter('time_var', 'GVL_Var.sTimeSt')            # PLC variable for timestamp
 
-        # Maybe this should change to main.bOnOff but it will currently be overwritten by the HMI interface
-        self.declare_parameter('grinder_on_var',    'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder 
-        self.declare_parameter('grinder_enabled',    False)                 # Turn the grinder on/off with True/False
-        self.declare_parameter('time_var',          'GVL_Var.sTimeSt')      # PLC variable for timestamp
+        self.declare_parameter('max_acf_extension', 0.3)                 # The maximum extension that can be reached by the ACF (float)
 
-        self.declare_parameter('max_acf_extension', '0.3')                  # The maximum extension that can be reached by the ACF
-                                       
-        self.target_ams_plc             = self.get_parameter('plc_target_ams').get_parameter_value().string_value
-        self.target_ip_plc              = self.get_parameter('plc_target_ip').get_parameter_value().string_value
+        # Retrieve parameters (as the correct types)
+        self.target_ams_plc         = self.get_parameter('plc_target_ams').get_parameter_value().string_value
+        self.target_ip_plc          = self.get_parameter('plc_target_ip').get_parameter_value().string_value
+        self.timeout_duration       = self.get_parameter('timeout_time').get_parameter_value().double_value
+        self.spin_up_duration       = self.get_parameter('time_before_extend').get_parameter_value().double_value
         
-        self.timer_period               = float(self.get_parameter('timer_period').get_parameter_value().string_value)
-        # self.contact_time               = float(self.get_parameter('max_contact_time').get_parameter_value().string_value)
-        # self.force_desired              = float(self.get_parameter('force_desired').get_parameter_value().string_value)   
-        self.timeout_time               = float(self.get_parameter('timeout_time').get_parameter_value().string_value)                           
-        self.startup_time               = float(self.get_parameter('time_before_extend').get_parameter_value().string_value)         
-        # self.desired_flowrate_scaled    = float(self.get_parameter('desired_flowrate_scaled').get_parameter_value().string_value)
+        self.rpm_control_var        = self.get_parameter('rpm_control_var').get_parameter_value().string_value  
+        self.grinder_on_var         = self.get_parameter('grinder_on_var').get_parameter_value().string_value   
+        self.grinder_enabled        = self.get_parameter('grinder_enabled').get_parameter_value().bool_value
+        self.time_var               = self.get_parameter('time_var').get_parameter_value().string_value   
         
-        self.rpm_control_var            = self.get_parameter('rpm_control_var').get_parameter_value().string_value  
-        self.grinder_on_var             = self.get_parameter('grinder_on_var').get_parameter_value().string_value   
-        self.grinder_enabled            = self.get_parameter('grinder_enabled').get_parameter_value().bool_value
-        self.get_logger().info(f'Grinder var: {self.grinder_enabled}')
-        self.time_var                   = self.get_parameter('time_var').get_parameter_value().string_value   
-        
-        self.max_acf_extension          = float(self.get_parameter('max_acf_extension').get_parameter_value().string_value)
+        self.max_acf_extension      = self.get_parameter('max_acf_extension').get_parameter_value().double_value
 
-        self.initial_contact_time       = None # Time at which initial contact was made (None until contact) 
-        # self.max_contact_time           = rclpy.duration.Duration(seconds=self.contact_time)
-        self.timeout_duration           = rclpy.duration.Duration(seconds=self.timeout_time)
-        self.spin_up_duration           = self.startup_time
     
     def connect_plc(self) -> None:
         self.plc = pyads.Connection(ams_net_id      =self.target_ams_plc, 
@@ -131,8 +115,7 @@ class DataCollector(Node):
         self.test_running = True 
         self.force_desired = request.force 
         self.desired_flowrate_scaled = self.rpm_to_flowrate(request.rpm)
-        self.max_contact_time = rclpy.duration.Duration(seconds=math.floor(request.contact_time), 
-                                                        nanoseconds=(request.contact_time % math.floor(request.contact_time)/10**9))
+        self.max_contact_time = request.contact_time
 
         self.get_logger().info(f"Settings received:\n  Force: {self.force_desired} N\n  RPM: {request.rpm}\n  Duration: {request.contact_time} seconds")
 
@@ -165,8 +148,7 @@ class DataCollector(Node):
     def spin_up_period_done(self):
         self.spin_up_wait.cancel()
         # Spin up duration over - start the main loop
-        # self.timer = self.create_timer(self.timer_period, self.timer_callback) # TODO To be removed
-        self.test_timed_out_timer = self.create_timer(self.timeout_duration.nanoseconds/10**9, self.timeout)
+        self.test_timed_out_timer = self.create_timer(self.timeout_duration, self.timeout)
 
         # Engage the grinder 
         header = Header() 
@@ -174,49 +156,18 @@ class DataCollector(Node):
         force = Float32Stamped(header=header, data=self.force_desired)
         self.publisher_force.publish(force)
         
-    
-    def timer_callback(self) -> None:
-        ...
-        # time = self.get_clock().now()
-    
-        # # Turn off if the maximum contact time has been exceeded 
-        # # if self.initial_contact_time is not None and self.initial_contact_time + self.max_contact_time <= time:
-        # #     self._test_success = True 
-        # #     self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
-        # #     self.shutdown_sequence()
-            
-        # # Turn off if the maximum runtime for timeout had been exceeded (in case there was no contact )
-        # if self.init_time + self.timeout < time:
-        #     self.get_logger().info(f"Maximum runtime of {self.timeout_time} seconds exceeded")
-        #     self.shutdown_sequence()
-        #     raise TimeoutError("Maximum runtime exceeded")
-        
-        # # Send command to the acf if past spin up time 
-        # # Even if the force stays the same, keep publishing force messages otherwise the acf node doesnt publish telemetry
-        # # Could by changed by setting the ACF to a fixed frequency, but this would also only update force settings at this frequency.
-        # # if time - self.init_time >= self.spin_up_duration:
-        # header = Header() 
-        # header.stamp = self.get_clock().now().to_msg()
-        # force = Float32Stamped(header=header, data=self.force_desired)
-        # self.publisher_force.publish(force)
-        
-        # # Send command to the plc - TODO this is probably not required - the desired rpm should stay the same 
-        # # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
-        # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
-
     def contact_time_exceeded(self):
-        self.test_finished_timer.cancel()   # TODO to be removed
-        self.initial_contact_time = None        # Reset for next test 
+        self.initial_contact_time = None    # Reset for next test 
 
-        if self._test_succes is None:
-            self._test_success = True               # Set success flag 
+        if self._test_success is None:
+            self._test_success = True       # Set success flag 
         self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
         self.shutdown_sequence()
 
     def timeout(self):
         self.test_timed_out_timer.cancel()
-        self.initial_contact_time = None        # Reset for next test 
-        self._test_succes = False   
+        self.initial_contact_time = None    # Reset for next test 
+        self._test_success = False   
         self._failure_message += f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached'
         self.get_logger().info(f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached')
         self.shutdown_sequence()
@@ -226,7 +177,6 @@ class DataCollector(Node):
         self.test_timed_out_timer.cancel()
 
         # Retract the acf
-        # self.force_desired = -5.
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         force = Float32Stamped(header=header, data=-5.)
@@ -235,15 +185,12 @@ class DataCollector(Node):
         # Stop the grinder
         self.plc.write_by_name(self.grinder_on_var, False)
         self.desired_flowrate_scaled = 0 
-        # self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_UINT, handle=self.rpm_control_handle)
         self.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
         
         # Stop the command timer 
-        # self.timer.cancel() # TODO to be removed 
         self._test_done = True 
         
     def rpm_callback(self, notification, data) -> None:
-        # self.get_logger(f'Notification type: {type(notification)} datatype: {type(data)}')
         # This publisher only exists to publish the rpm notifications so it is recorded in the rosbag
         handle, timestamp, value = self.plc.parse_notification(notification, pyads.PLCTYPE_UDINT)
         
@@ -260,11 +207,11 @@ class DataCollector(Node):
             self.initial_contact_time = self.get_clock().now()
 
             # Shutdown after contact duration is reached
-            self.test_finished_timer = self.create_timer(self.max_contact_time.nanoseconds/10**9, self.contact_time_exceeded)
+            self.test_finished_timer = self.create_timer(self.max_contact_time, self.contact_time_exceeded)
 
         # If an acf extension within 2% of its max is reached, signal that the test may have failed 
         if abs(self.max_acf_extension - msg.telemetry.position) / self.max_acf_extension < 0.02:
-            self._test_succes = False
+            self._test_success = False
             self._failure_message += '\nThe maximum extension of the ACF was reached. This means force may not have been maintained.'
             
 
