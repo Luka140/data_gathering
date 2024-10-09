@@ -22,23 +22,21 @@ def generate_launch_description():
 
     # =========================================================================================
     sample      = "TEST"   #---------------- Change this! -------------------------------------
-    # =========================================================================================
-    grit        = 120
-    force_settings = [2,4,6]
-    rpm_settings = [8000, 9000, 10000]
-    contact_times = [2]
     plate_thickness = 2.3e-3  # In meters 
-
-    # TODO publish current wear 
+    # =========================================================================================
+    
+    grit        = 120
+    force_settings = [4,5,6]
+    rpm_settings = [8000, 9000, 10000]
+    contact_times = [10]
+    
     # TODO look at namespace config files 
     # TODO code for priming belt  -- actually just use the same setting with this consistently
-    # TODO Add check of whether the maximum extension was reached....
-    # TODO the rosbags sample check is not performed now because it is looking at the wrong folder 
-    # TODO Rotate the end effector to scan up-down instead of left-right 
 
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
-    wear_threshold = 5e6
+
+    wear_threshold = 5e6                # Threshold of force * rpm * time after which the belt needs to be changed
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
@@ -50,10 +48,11 @@ def generate_launch_description():
         package=pkg,
         executable="data_collector",
         parameters=[{
-             'timeout_time':            '30.',      # Duration before timout of a single test
+             'timeout_time':            '30.',      # Duration before timeout of a single test
              'timer_period':            '0.01',     # Period between force and RPM calls # TODO to be removed 
              'time_before_extend':      '3',        # Duration between initial spin up of grinder and ACF extension
-             'grinder_enabled':         True       # Enable/Disable the grinder with True/False
+             'grinder_enabled':         True,       # Enable/Disable the grinder with True/False
+             'max_acf_extension':       '0.3'      # Extension of the acf before hitting its endstop in meters 
             }
         ]
     )
@@ -81,7 +80,7 @@ def generate_launch_description():
             {'ip': '169.254.200.17',
              'ramp_duration': 0.0,
              'frequency': 120,
-             'payload': 0.2}
+             'payload': 1.6}
         ]
     )
 
@@ -95,7 +94,7 @@ def generate_launch_description():
     scanner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(surface_scanner),
         launch_arguments={
-            'path_config': 'trajectory_test_plate.yaml',
+            'path_config': 'trajectory_test_plate_vertical.yaml',
             'autonomous_execution': 'false',  
             'loop_on_service': 'true',        
             'auto_loop': 'false',             

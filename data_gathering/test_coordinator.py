@@ -4,7 +4,8 @@ from rclpy.executors import MultiThreadedExecutor
 
 from rcl_interfaces.msg import ParameterDescriptor 
 from data_gathering_msgs.srv import TestRequest,  RequestPCL, RequestPCLVolumeDiff
-from std_msgs.msg import Empty
+from data_gathering_msgs.msg import BeltWearHistory
+from std_msgs.msg import Empty, String 
 from sensor_msgs.msg import PointCloud2
 from std_srvs.srv import Trigger 
 
@@ -68,7 +69,8 @@ class TestCoordinator(Node):
         self.user_stop_testing      = self.create_subscription(Empty, "stop_testing", self.usr_stop_testing, 1)
         self.user_continue_testing  = self.create_subscription(Empty, "continue_testing", self.usr_continue_testing, 1)
         self.user_changed_belt      = self.create_subscription(Empty, "changed_belt", self.usr_changed_belt, 1)
-        self.failure_publisher      = self.create_publisher(Empty, 'test_failure', 1)
+        self.failure_publisher      = self.create_publisher(String, 'test_failure', 1)
+        self.belt_wear_publisher    = self.create_publisher(BeltWearHistory, 'belt_wear_history', 1)
 
         self.scan_surface_trigger     = self.create_client(RequestPCL, 'execute_loop')      
         self.calculate_volume_trigger = self.create_client(RequestPCLVolumeDiff, 'calculate_volume_lost')   
@@ -93,6 +95,9 @@ class TestCoordinator(Node):
         self.test_start_countdown.cancel()
         self.ready_for_next = False 
         self.rosbag.start_recording(self.generate_rosbag_suffix())
+
+        # Publish the current wear history to store it in the rosbag 
+        self.belt_wear_publisher.publish(self.create_wear_msg())
 
         # Perform an initial scan if this is the first test
         if self.test_index == 0:
@@ -124,10 +129,12 @@ class TestCoordinator(Node):
     def test_finished_callback(self, future):
         result = future.result()
         success = result.success
+
+        
         
         if not success:
             self.get_logger().error("The test seems to have failed")
-            self.failure_publisher.publish(Empty())  # Leave a message so the recording is marked as a failed test
+            self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
             self.rosbag.stop_recording()
             return
         
@@ -209,6 +216,15 @@ class TestCoordinator(Node):
     def read_initial_wear(self):
         wear_csv = pd.read_csv(self.belt_tracking_path, delimiter=',')
         return self.wear_metric_calculation(wear_csv['force'], wear_csv['rpm'], wear_csv['contact_time'])
+    
+    def create_wear_msg(self):
+        wear_csv = pd.read_csv(self.belt_tracking_path, delimiter=',')
+        msg = BeltWearHistory()
+        msg.force           = list(wear_csv["force"])
+        msg.rpm             = list(wear_csv["rpm"])
+        msg.contact_time    = list(wear_csv["contact_time"])
+        msg.tracked_file    = str(self.belt_tracking_path)
+        return msg 
         
     def belt_change(self):
         """

@@ -35,12 +35,12 @@ class DataCollector(Node):
         # Variable is set to True in `shutdown_sequence`. This indicates that the service callback self.start_test can return a finished response to the coordinator. 
         self._test_done = False 
         # Variable is set to True if the grinder is shutdown after the maximum runtime is exceeded. Not the most robust metric but temporary solution.
-        self._test_success = False
+        self._test_success = None
+        self._failure_message = ''
 
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
         self.time_sync_timer     = self.create_timer(1, self.sync_callback)
-        # TODO move this to the coordinator and make the timer depend on grind time 
 
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
@@ -73,10 +73,13 @@ class DataCollector(Node):
         self.declare_parameter('rpm_control_var',    'Flow_Control_valve.iScaledDesiredFlowRate') 
         # self.declare_parameter('desired_flowrate_scaled', '40')              # Percentage of flowrate to control the grinder RPM
         
+
         # Maybe this should change to main.bOnOff but it will currently be overwritten by the HMI interface
         self.declare_parameter('grinder_on_var',    'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder 
         self.declare_parameter('grinder_enabled',    False)                 # Turn the grinder on/off with True/False
         self.declare_parameter('time_var',          'GVL_Var.sTimeSt')      # PLC variable for timestamp
+
+        self.declare_parameter('max_acf_extension', '0.3')                  # The maximum extension that can be reached by the ACF
                                        
         self.target_ams_plc             = self.get_parameter('plc_target_ams').get_parameter_value().string_value
         self.target_ip_plc              = self.get_parameter('plc_target_ip').get_parameter_value().string_value
@@ -94,6 +97,8 @@ class DataCollector(Node):
         self.get_logger().info(f'Grinder var: {self.grinder_enabled}')
         self.time_var                   = self.get_parameter('time_var').get_parameter_value().string_value   
         
+        self.max_acf_extension          = float(self.get_parameter('max_acf_extension').get_parameter_value().string_value)
+
         self.initial_contact_time       = None # Time at which initial contact was made (None until contact) 
         # self.max_contact_time           = rclpy.duration.Duration(seconds=self.contact_time)
         self.timeout_duration           = rclpy.duration.Duration(seconds=self.timeout_time)
@@ -137,7 +142,7 @@ class DataCollector(Node):
         response.contact_time = request.contact_time 
 
         # Turn on grinder 
-        self.publisher_rpm_req.publish(Int32Stamped(data=int(request.rpm), header=Header()))
+        self.publisher_rpm_req.publish(Int32Stamped(data=int(request.rpm), header=Header(stamp=self.get_clock().now().to_msg())))
         self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
         self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
 
@@ -149,10 +154,12 @@ class DataCollector(Node):
         while not self._test_done:
             wait_for_finish_rate.sleep()
         self._test_done = False 
-        self.test_running = False # TODO these two vars do sometime similar, could be combined
+        self.test_running = False # TODO these two vars do something similar, could be combined
 
         response.success = self._test_success
-        self._test_success = False  
+        response.message = self._failure_message
+        self._test_success = None  
+        self._failure_message = ''
         return response
     
     def spin_up_period_done(self):
@@ -200,7 +207,9 @@ class DataCollector(Node):
     def contact_time_exceeded(self):
         self.test_finished_timer.cancel()   # TODO to be removed
         self.initial_contact_time = None        # Reset for next test 
-        self._test_success = True               # Set success flag 
+
+        if self._test_succes is None:
+            self._test_success = True               # Set success flag 
         self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
         self.shutdown_sequence()
 
@@ -208,12 +217,14 @@ class DataCollector(Node):
         self.test_timed_out_timer.cancel()
         self.initial_contact_time = None        # Reset for next test 
         self._test_succes = False   
+        self._failure_message += f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached'
         self.get_logger().info(f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached')
         self.shutdown_sequence()
 
     def shutdown_sequence(self) -> None:
         self.get_logger().info(f"Turning off")
-        
+        self.test_timed_out_timer.cancel()
+
         # Retract the acf
         # self.force_desired = -5.
         header = Header()
@@ -243,13 +254,20 @@ class DataCollector(Node):
         if not self.test_running:
             return 
 
+        # Set the initial contact time if a force within 10% of the desired force is reached
         force_abs_relative_error = abs((self.force_desired - msg.telemetry.force) / (self.force_desired + 1e-3)) # Added 1 mN in divisor to avoid div by zero
         if self.initial_contact_time is None and msg.telemetry.in_contact and (force_abs_relative_error < 0.1):
             self.initial_contact_time = self.get_clock().now()
 
             # Shutdown after contact duration is reached
             self.test_finished_timer = self.create_timer(self.max_contact_time.nanoseconds/10**9, self.contact_time_exceeded)
+
+        # If an acf extension within 2% of its max is reached, signal that the test may have failed 
+        if abs(self.max_acf_extension - msg.telemetry.position) / self.max_acf_extension < 0.02:
+            self._test_succes = False
+            self._failure_message += '\nThe maximum extension of the ACF was reached. This means force may not have been maintained.'
             
+
     def sync_callback(self):
         sync_msg = TimeSync()
         plc_datetime = datetime.fromisoformat(self.plc.read_by_name('', pyads.PLCTYPE_STRING, handle=self.time_handle))
