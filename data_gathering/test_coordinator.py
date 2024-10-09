@@ -94,7 +94,19 @@ class TestCoordinator(Node):
     def execute_test(self):
         self.test_start_countdown.cancel()
         self.ready_for_next = False 
-        self.rosbag.start_recording(self.generate_rosbag_suffix())
+        recording_started, msg = self.rosbag.start_recording(self.generate_rosbag_suffix())
+        if not recording_started:
+            self.get_logger().error(f"Cancelling the test: {msg}")
+            return 
+        
+        # Wait until rosbag is ready
+        rosbag_ready, rosbag_msg = self.rosbag.wait_for_rosbag(timeout_sec=10.0)
+        if not rosbag_ready:
+            self.get_logger().error(f"Cancelling the test: {rosbag_msg}")
+            self.rosbag.stop_recording()
+            return 
+        else:
+            self.get_logger().info("Rosbag recording is ready.")
 
         # Publish the current wear history to store it in the rosbag 
         self.belt_wear_publisher.publish(self.create_wear_msg())
@@ -109,7 +121,7 @@ class TestCoordinator(Node):
 
             # Perform grind 
             self.call_test()
-        
+
     def initial_scan_done_callback(self, future):
         result = future.result()
         success = result.success
@@ -129,8 +141,6 @@ class TestCoordinator(Node):
     def test_finished_callback(self, future):
         result = future.result()
         success = result.success
-
-
         
         if not success:
             self.get_logger().error("The test seems to have failed")
@@ -329,7 +339,6 @@ class TestCoordinator(Node):
         self.write_pcl(post_grind, pcl_postgrind_path)
         
         return path
-
     
 def main(args=None):
     rclpy.init(args=args)

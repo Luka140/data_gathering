@@ -27,7 +27,7 @@ def generate_launch_description():
     grit        = 120
     force_settings = [4,5,6]
     rpm_settings = [8000, 9000, 10000]
-    contact_times = [10]
+    contact_times = [5]
     
     # TODO look at namespace config files 
     # TODO code for priming belt  -- actually just use the same setting with this consistently

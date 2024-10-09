@@ -35,9 +35,10 @@ class DataCollector(Node):
         # Variable is set to True in `shutdown_sequence`. This indicates that the service callback self.start_test can return a finished response to the coordinator. 
         self._test_done = False 
         self._test_success = None
-        self._failure_message = ''
+        self._failure_message = ''          
         self.initial_contact_time = None 
-        self.test_running = False           # Switch ingores telem data if not testing
+        self.test_running = False               # Switch ingores telem data if not testing
+        self._full_extension_reached = False    # Flag for whether the test failed because of ACF maxing out extension
 
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
@@ -157,6 +158,7 @@ class DataCollector(Node):
         self.publisher_force.publish(force)
         
     def contact_time_exceeded(self):
+        self.test_finished_timer.cancel()
         self.initial_contact_time = None    # Reset for next test 
 
         if self._test_success is None:
@@ -210,7 +212,8 @@ class DataCollector(Node):
             self.test_finished_timer = self.create_timer(self.max_contact_time, self.contact_time_exceeded)
 
         # If an acf extension within 2% of its max is reached, signal that the test may have failed 
-        if abs(self.max_acf_extension - msg.telemetry.position) / self.max_acf_extension < 0.02:
+        if not self._full_extension_reached and abs(self.max_acf_extension - msg.telemetry.position) / self.max_acf_extension < 0.02:
+            self._full_extension_reached = True
             self._test_success = False
             self._failure_message += '\nThe maximum extension of the ACF was reached. This means force may not have been maintained.'
             
