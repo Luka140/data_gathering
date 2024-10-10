@@ -143,11 +143,12 @@ class TestCoordinator(Node):
         success = result.success
         
         if not success:
-            self.get_logger().error("The test seems to have failed")
+            self.get_logger().error(f"\n\nThe test seems to have failed due to:\n{result.message}\n")
             self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
-            self.rosbag.stop_recording()
-            return
+            # self.rosbag.stop_recording()
+            # return
         
+        self.get_logger().info("Performing after test scan...")
         # Scan after the grind 
         scan_call = self.scan_surface_trigger.call_async(RequestPCL.Request())
         scan_call.add_done_callback(self.second_scan_done_callback)

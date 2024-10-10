@@ -1,9 +1,9 @@
 import subprocess
-import os
 from pathlib import Path
 from datetime import datetime
 import threading
 import time
+
 
 class RosbagRecorder:
     def __init__(self, topics, bag_directory, bag_prefix, logger):

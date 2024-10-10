@@ -21,21 +21,22 @@ def generate_launch_description():
 
     # =========================================================================================
     sample      = "TEST"   #---------------- Change this! -------------------------------------
-    plate_thickness = 2.3e-3  # In meters 
+    plate_thickness = 2. / 1000  # In meters 
     # =========================================================================================
     
     grit        = 120
-    force_settings = [4,5,6]
-    rpm_settings = [8000, 9000, 10000]
-    contact_times = [5]
+    force_settings = [3,5,7]
+    rpm_settings = [7000, 9000, 11000]
+    contact_times = [10]
     
-    # TODO look at namespace config files 
-    # TODO code for priming belt  -- actually just use the same setting with this consistently
+    
+    # TODO Test for what wear threshold should be 
+    # TODO that bastard timer is still getting fired twice for some reason 
 
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
 
-    wear_threshold = 5e6    # Threshold of force * rpm * time after which the belt needs to be changed
+    wear_threshold = 20e6    # Threshold of force * rpm * time after which the belt needs to be changed
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
@@ -65,7 +66,7 @@ def generate_launch_description():
              'grit':                    grit,              # Grit of the belt (only for logging purposes)
              'sample':                  sample,            # Sample number (only for logging purposes)
              'wear_threshold':          wear_threshold,    # Threshold of the belt wear metric before requiring a change
-             'plate_thickness':         plate_thickness,   
+             'plate_thickness':         plate_thickness,   # The thickness of the tested plate (m)
              'wear_tracking_path':      "src/data_gathering/data/belt_data/beltid_1_grit_120.csv",
             }
         ]

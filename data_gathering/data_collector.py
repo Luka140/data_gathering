@@ -29,16 +29,20 @@ class DataCollector(Node):
         self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
         self.publisher_rpm_req   = self.create_publisher(Int32Stamped, '/grinder/requested_rpm', 10)
         self.publisher_time_sync = self.create_publisher(TimeSync, '/timesync', 10)
-        self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 1)
+
+        # Without a mutually exclusive group, this callback may lead to multiple test_done timers being created unintentionally
+        self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 5, callback_group=MutuallyExclusiveCallbackGroup())
         self.test_server         = self.create_service(TestRequest, 'execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
 
-        # Variable is set to True in `shutdown_sequence`. This indicates that the service callback self.start_test can return a finished response to the coordinator. 
-        self._test_done = False 
-        self._test_success = None
-        self._failure_message = ''          
-        self.initial_contact_time = None 
-        self.test_running = False               # Switch ingores telem data if not testing
-        self._full_extension_reached = False    # Flag for whether the test failed because of ACF maxing out extension
+        # Initialize flags 
+        self.test_done = False                  # Indicates when TestRequest response is finished. Set in shutdown_sequence
+        self.test_success = None                # Indicates whether the test was successful
+        self.failure_message = ''               # Stores potential failure messages
+        self.initial_contact_time = None        # Stores the time at which the grinder initially made contact with the part
+        self.test_running = False               # Switch to ingore telem data if not currently testing
+        self.full_extension_reached = False     # Flag for test failure because of ACF maxing out extension
+        self.belt_halted = False                # Flag for test failure because the grinding belt got caught 
+        self.shutdown_started = False           # Indicates whether the shutdown procedure started 
 
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
@@ -101,21 +105,38 @@ class DataCollector(Node):
         self.get_logger().info(f"\nPLC State: \n{self.plc.read_state()}")
    
     def init_handles(self) -> None:
-        # Using handles with pyads.read/write_by_name is faster than just using the variable name 
-        # Do not forget to release any handles that are added - they will reduce the bandwidth to the plc otherwise
+        """ Initializes PLC handles.
+                Using handles with pyads.read/write_by_name is faster than just using the variable name. 
+                Do not forget to release any handles that are added - they will reduce the bandwidth to the plc otherwise.
+        """
+         
         self.rpm_control_handle = self.plc.get_handle(self.rpm_control_var)
         self.time_handle        = self.plc.get_handle(self.time_var)
         self.get_logger().info("Handles initialised")
         
     def release_handles(self) -> None:
+        """ Release the PLC handles after testing """
         self.plc.release_handle(self.rpm_control_handle)
         self.plc.release_handle(self.time_handle)
         self.plc.del_device_notification(self.rpm_notification_handle)
 
     def start_test(self, request, response):
+        """ Main service callback. 
+            
+            This currently blocks an extra thread in a while loop while the test is executed. Fix later :)
+        """
         self.test_running = True 
+        self.test_done = False 
+        self.shutdown_started = False 
+        self.initial_contact_time = None  
+        self.test_success = None  
+        self.failure_message = ''
+        self.full_extension_reached = False     
+        self.belt_halted = False                
+
         self.force_desired = request.force 
-        self.desired_flowrate_scaled = self.rpm_to_flowrate(request.rpm)
+        self.desired_rpm = request.rpm      # This should not be used to set the RPM, it is just used for some performance checks
+        self.desired_flowrate_scaled = self.rpm_to_flowrate(request.rpm)    # This is the variable that controls RPM 
         self.max_contact_time = request.contact_time
 
         self.get_logger().info(f"Settings received:\n  Force: {self.force_desired} N\n  RPM: {request.rpm}\n  Duration: {request.contact_time} seconds")
@@ -135,20 +156,22 @@ class DataCollector(Node):
 
         wait_for_finish_rate = self.create_rate(1)
         # Hang the response until the test is done as indicated by a shutdown_sequence call
-        while not self._test_done:
+        while not self.test_done:
             wait_for_finish_rate.sleep()
-        self._test_done = False 
-        self.test_running = False # TODO these two vars do something similar, could be combined
 
-        response.success = self._test_success
-        response.message = self._failure_message
-        self._test_success = None  
-        self._failure_message = ''
+        response.success = self.test_success
+        response.message = self.failure_message
+
+        # Set test_running to false to ignore telem in downtime
+        self.test_running = False 
         return response
     
     def spin_up_period_done(self):
+        # Spin up duration over - engage the ACF and start grinding.
         self.spin_up_wait.cancel()
-        # Spin up duration over - start the main loop
+        
+        # Create timer after which the grinder will switch of in case contact is not detected
+        # This is not the actual test duration, it is just a failsafe. 
         self.test_timed_out_timer = self.create_timer(self.timeout_duration, self.timeout)
 
         # Engage the grinder 
@@ -159,23 +182,22 @@ class DataCollector(Node):
         
     def contact_time_exceeded(self):
         self.test_finished_timer.cancel()
-        self.initial_contact_time = None    # Reset for next test 
-
-        if self._test_success is None:
-            self._test_success = True       # Set success flag 
+        if self.test_success is None:
+            self.test_success = True       # Set success flag 
         self.get_logger().info(f'Grind time of {self.max_contact_time} exceeded')
         self.shutdown_sequence()
 
     def timeout(self):
         self.test_timed_out_timer.cancel()
-        self.initial_contact_time = None    # Reset for next test 
-        self._test_success = False   
-        self._failure_message += f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached'
+        self.test_success = False   
+        self.failure_message += f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached'
         self.get_logger().info(f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached')
         self.shutdown_sequence()
 
     def shutdown_sequence(self) -> None:
+        self.shutdown_started = True 
         self.get_logger().info(f"Turning off")
+        
         self.test_timed_out_timer.cancel()
 
         # Retract the acf
@@ -185,20 +207,25 @@ class DataCollector(Node):
         self.publisher_force.publish(force)
         
         # Stop the grinder
-        self.plc.write_by_name(self.grinder_on_var, False)
         self.desired_flowrate_scaled = 0 
+        self.plc.write_by_name(self.grinder_on_var, False)
         self.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
         
         # Stop the command timer 
-        self._test_done = True 
+        self.test_done = True 
         
     def rpm_callback(self, notification, data) -> None:
-        # This publisher only exists to publish the rpm notifications so it is recorded in the rosbag
+        # This callback exists to publishe the rpm notifications so it is recorded in the rosbag
         handle, timestamp, value = self.plc.parse_notification(notification, pyads.PLCTYPE_UDINT)
-        
         header = Header(stamp=self.datetime_to_msg(timestamp))
-        self.publisher_rpm.publish(Int32Stamped(data=value, header=header))
+        
+        # Check whether the belt is getting caught 
+        if self.initial_contact_time is not None and not self.belt_halted and not self.shutdown_started and abs(value / self.desired_rpm) < 0.5:
+            self.test_succes = False 
+            self.failure_message += '\nThe belt RPM dropped below half of the target RPM during contact.'
     
+        self.publisher_rpm.publish(Int32Stamped(data=value, header=header))
+
     def telem_callback(self, msg:ACFTelemStamped):
         if not self.test_running:
             return 
@@ -212,13 +239,16 @@ class DataCollector(Node):
             self.test_finished_timer = self.create_timer(self.max_contact_time, self.contact_time_exceeded)
 
         # If an acf extension within 2% of its max is reached, signal that the test may have failed 
-        if not self._full_extension_reached and abs(self.max_acf_extension - msg.telemetry.position) / self.max_acf_extension < 0.02:
-            self._full_extension_reached = True
-            self._test_success = False
-            self._failure_message += '\nThe maximum extension of the ACF was reached. This means force may not have been maintained.'
+        # In this case the ACF may be pushing on its endstop rather than the part
+        if not self.full_extension_reached and abs(self.max_acf_extension - msg.telemetry.position) / self.max_acf_extension < 0.02:
+            self.full_extension_reached = True
+            self.test_success = False
+            self.failure_message += '\nThe maximum extension of the ACF was reached. This means force may not have been maintained.'
             
 
     def sync_callback(self):
+        """Creates a TimeSync message which contains a timestamp from the PLC and ROS to compare later.
+        """
         sync_msg = TimeSync()
         plc_datetime = datetime.fromisoformat(self.plc.read_by_name('', pyads.PLCTYPE_STRING, handle=self.time_handle))
         ros_time = self.get_clock().now().to_msg()
@@ -236,6 +266,9 @@ class DataCollector(Node):
         return time_msg
     
     def rpm_to_flowrate(self, rpm):
+        """
+        Calculates the desired_flowrate_scaled based on an inversion of how RPM is calculated in the PLC code.
+        """
         return 100 * (rpm - 3400) / 7600
      
             
