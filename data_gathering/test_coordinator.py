@@ -37,6 +37,7 @@ class TestCoordinator(Node):
         self.declare_parameter("wear_tracking_path", "")
         self.declare_parameter("test_tracker_path", "")
         self.declare_parameter("record_path", "")
+        self.declare_parameter("volume_data_path", "")
 
         self.force_settings         = self.get_parameter("force_settings").value
         self.rpm_settings           = self.get_parameter("rpm_settings").value
@@ -50,6 +51,7 @@ class TestCoordinator(Node):
         self.belt_tracking_path     = pathlib.Path(self.get_parameter("wear_tracking_path").value)
         self.performed_tests_path   = pathlib.Path(self.get_parameter("test_tracker_path").value)
         self.record_path            = pathlib.Path(self.get_parameter("record_path").value)
+        self.volume_data_path       = pathlib.Path(self.get_parameter("volume_data_path").value)
 
         # Set default paths if any parameter is empty
         if not self.data_path or self.data_path == pathlib.Path('.'):
@@ -60,6 +62,8 @@ class TestCoordinator(Node):
             self.performed_tests_path = self.data_path / 'performed_tests.csv'
         if not self.record_path or self.record_path == pathlib.Path('.'):
             self.record_path = self.data_path / 'test_data'
+        if not self.volume_data_path or self.volume_data_path == pathlib.Path('.'):
+            self.volume_data_path = self.data_path / 'volume_data'
 
         self.test_setting_validity()
         self.settings = self.create_setting_list()
@@ -171,6 +175,11 @@ class TestCoordinator(Node):
     def volume_calc_done_callback(self, data_path, future):
         result = future.result()
         self.write_pcl(result.difference_pointcloud, data_path / 'difference_pcl.ply')
+        
+        #write empty text file with details in the file name for volume csv creation
+        test_settings = self.settings[self.test_index]
+        filename = f"volume_sample{self.sample_id}_f{test_settings.force}_rpm{test_settings.rpm}_t{test_settings.contact_time}_vol{result.volume_difference:.4f}.txt"
+        (self.volume_data_path / filename).touch()  # This creates an empty file
 
         self.rosbag.stop_recording()
         
