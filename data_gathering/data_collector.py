@@ -50,8 +50,10 @@ class DataCollector(Node):
 
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
-        self.rpm_notification_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback)
-               
+        self.rpm_notification_handle, self._user_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback, user_handle=3)
+
+        self.maintain_connection_timer = self.create_timer(3, self.wake_up_connection)
+
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-5.))
         self.force_desired = -5
@@ -118,7 +120,7 @@ class DataCollector(Node):
         """ Release the PLC handles after testing """
         self.plc.release_handle(self.rpm_control_handle)
         self.plc.release_handle(self.time_handle)
-        self.plc.del_device_notification(self.rpm_notification_handle)
+        self.plc.del_device_notification(self.rpm_notification_handle, self._user_handle)
 
     def start_test(self, request, response):
         """ Main service callback. 
@@ -170,7 +172,7 @@ class DataCollector(Node):
         # Spin up duration over - engage the ACF and start grinding.
         self.spin_up_wait.cancel()
         
-        # Create timer after which the grinder will switch of in case contact is not detected
+        # Create timer after which the grinder will switch off in case contact is not detected
         # This is not the actual test duration, it is just a failsafe. 
         self.test_timed_out_timer = self.create_timer(self.timeout_duration, self.timeout)
 
@@ -181,6 +183,7 @@ class DataCollector(Node):
         self.publisher_force.publish(force)
         
     def contact_time_exceeded(self):
+        """ Timer callback for when the test time has elapsed """
         self.test_finished_timer.cancel()
         if self.test_success is None:
             self.test_success = True       # Set success flag 
@@ -188,6 +191,7 @@ class DataCollector(Node):
         self.shutdown_sequence()
 
     def timeout(self):
+        """ Timer callback for when the timeout time has elapsed eventhough the requested contact duration was not reached """
         self.test_timed_out_timer.cancel()
         self.test_success = False   
         self.failure_message += f'Test timed out. Duration of {self.max_contact_time} exceeded. Likely no contact was detected or the desired force was never reached'
@@ -215,14 +219,15 @@ class DataCollector(Node):
         self.test_done = True 
         
     def rpm_callback(self, notification, data) -> None:
-        # This callback exists to publishe the rpm notifications so it is recorded in the rosbag
+        """ This callback exists to publishe the rpm notifications so it is recorded in the rosbag """
         handle, timestamp, value = self.plc.parse_notification(notification, pyads.PLCTYPE_UDINT)
         header = Header(stamp=self.datetime_to_msg(timestamp))
         
         # Check whether the belt is getting caught 
-        if self.initial_contact_time is not None and not self.belt_halted and not self.shutdown_started and abs(value / self.desired_rpm) < 0.5:
+        if self.initial_contact_time is not None and not self.belt_halted and not self.shutdown_started and abs(value / self.desired_rpm) < 0.3:
             self.test_succes = False 
-            self.failure_message += '\nThe belt RPM dropped below half of the target RPM during contact.'
+            self.belt_halted = True 
+            self.failure_message += '\nThe belt RPM dropped below 30 percent of the target RPM during contact.'
     
         self.publisher_rpm.publish(Int32Stamped(data=value, header=header))
 
@@ -245,7 +250,6 @@ class DataCollector(Node):
             self.test_success = False
             self.failure_message += '\nThe maximum extension of the ACF was reached. This means force may not have been maintained.'
             
-
     def sync_callback(self):
         """Creates a TimeSync message which contains a timestamp from the PLC and ROS to compare later.
         """
@@ -271,6 +275,12 @@ class DataCollector(Node):
         """
         return 100 * (rpm - 3400) / 7600
      
+    def wake_up_connection(self):
+        """ The PLC seems to lose connection after some timer without interaction, leading to errors. 
+            This timer is an attempt at keeping the connection alive by interacting with the plc every couple of seconds.
+        """
+        self.plc.read_by_name(self.grinder_on_var)
+
             
 def main(args=None):
     rclpy.init(args=args)
@@ -298,7 +308,7 @@ def main(args=None):
         try:    
             # Turn off grinder and set the goal RPM to zero
             data_collector.plc.write_by_name(data_collector.grinder_on_var, False)
-            data_collector.plc.write_by_name(data_collector.rpm_control_handle, 0)
+            data_collector.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=data_collector.rpm_control_handle)
             data_collector.release_handles()
             data_collector.plc.close()
         except Exception as e:
@@ -306,7 +316,11 @@ def main(args=None):
             
         
         data_collector.destroy_node()
-        rclpy.shutdown()
+        # Avoid stack trace 
+        try:
+            rclpy.shutdown()
+        except rclpy._rclpy_pybind11.RCLError:
+            pass 
 
 
 if __name__ == '__main__':

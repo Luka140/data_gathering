@@ -32,6 +32,11 @@ class TestCoordinator(Node):
         self.declare_parameter("sample", "")
         self.declare_parameter("plate_thickness", 0.)
 
+        self.declare_parameter("belt_prime_force",  3,      ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_rpm",    9000,   ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_time",   5,      ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("initial_prime", False)
+
         self.declare_parameter("wear_threshold", 10e6)
         self.declare_parameter("data_path", "")
         self.declare_parameter("wear_tracking_path", "")
@@ -44,6 +49,11 @@ class TestCoordinator(Node):
         self.grit                   = self.get_parameter("grit").value
         self.sample_id              = self.get_parameter("sample").value
         self.plate_thickness        = self.get_parameter("plate_thickness").value 
+
+        belt_prime_force    = self.get_parameter("belt_prime_force").value
+        belt_prime_rpm      = self.get_parameter("belt_prime_rpm").value
+        belt_prime_time     = self.get_parameter("belt_prime_time").value
+        initial_prime_belt  = self.get_parameter("initial_prime").value 
 
         self.belt_threshold         = self.get_parameter("wear_threshold").value
         self.data_path              = pathlib.Path(self.get_parameter('data_path').value)
@@ -62,8 +72,10 @@ class TestCoordinator(Node):
             self.record_path = self.data_path / 'test_data'
 
         self.test_setting_validity()
-        self.settings = self.create_setting_list()
+        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.contact_time_settings)
         self.test_index = 0
+
+        self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
                 
         self.test_client            = self.create_client(TestRequest, "execute_test")
         self.user_stop_testing      = self.create_subscription(Empty, "stop_testing", self.usr_stop_testing, 1)
@@ -75,7 +87,9 @@ class TestCoordinator(Node):
         self.scan_surface_trigger     = self.create_client(RequestPCL, 'execute_loop')      
         self.calculate_volume_trigger = self.create_client(RequestPCLVolumeDiff, 'calculate_volume_lost')   
 
-        self.ready_for_next = True # Flag to see whether a test is in progress right now or the next test can be started on user input
+        self.ready_for_next = True  # Flag to see whether a test is in progress right now or the next test can be started on user input
+        self.primed_belt = False    # Flag to indicate that a new belt was just primed, so a new 'before' scan should be made 
+        self.belt_worn = False      # Flag to indicate that the belt should be changed - unlocks the self.usr_changed_belt callback
 
         current_wear = self.read_initial_wear()
         if current_wear > self.belt_threshold:
@@ -84,17 +98,21 @@ class TestCoordinator(Node):
         self.rosbag = RosbagRecorder(['-a'],  str(self.record_path), 'rosbag2', self.get_logger())
 
         self.startup_delay = 5
-        self.get_logger().info(f"Test coordinator started -- Executing first test in {self.startup_delay} seconds")
-        self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
+
+        if not initial_prime_belt:
+            self.get_logger().info(f"Test coordinator started -- Executing first test in {self.startup_delay} seconds")
+            self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
+        else:
+            # First do a prime run on the belt
+            self.get_logger().info(f"Test coordinator started -- Priming belt in {self.startup_delay} seconds")
+            self.prime_belt_countdown = self.create_timer(self.startup_delay, self.prime_belt)
 
     ############################################################################################################################################
     # Main pipeline callback chain
     ############################################################################################################################################
-    
-    def execute_test(self):
-        self.test_start_countdown.cancel()
-        self.ready_for_next = False 
-        recording_started, msg = self.rosbag.start_recording(self.generate_rosbag_suffix())
+
+    def start_rosbag(self, extra_suffix=''):
+        recording_started, msg = self.rosbag.start_recording(self.generate_rosbag_suffix() + extra_suffix)
         if not recording_started:
             self.get_logger().error(f"Cancelling the test: {msg}")
             return 
@@ -107,12 +125,43 @@ class TestCoordinator(Node):
             return 
         else:
             self.get_logger().info("Rosbag recording is ready.")
+    
+    def prime_belt(self):
+        self.prime_belt_countdown.cancel()
+        self.ready_for_next = False 
+
+        self.start_rosbag('_BELT_PRIME')
+    
+        # Perform prime grind 
+        request = self.belt_prime_settings
+        call = self.test_client.call_async(request)
+        call.add_done_callback(self.prime_finished_callback)
+    
+    def prime_finished_callback(self, future):
+        self.get_logger().info("Finished priming belt")
+        result = future.result()
+        success = result.success
+        self.primed_belt = True # Indicate that a new 'before' scan should be made 
+
+        if not success:
+            self.get_logger().error(f"\n\nThe belt prime seems to have failed due to:\n{result.message}\n")
+            self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
+        
+        self.rosbag.stop_recording()
+        self.ask_next_test()       
+
+    def execute_test(self):
+        self.test_start_countdown.cancel()
+        self.ready_for_next = False 
+        
+        self.start_rosbag()
 
         # Publish the current wear history to store it in the rosbag 
         self.belt_wear_publisher.publish(self.create_wear_msg())
 
-        # Perform an initial scan if this is the first test
-        if self.test_index == 0:
+        # Perform an initial scan if this is the first test or if the belt was just primed
+        if self.test_index == 0 or self.primed_belt:
+            self.primed_belt = False 
             scan_call = self.scan_surface_trigger.call_async(RequestPCL.Request())
             scan_call.add_done_callback(self.initial_scan_done_callback)
         else:
@@ -183,6 +232,7 @@ class TestCoordinator(Node):
         current_wear = self.read_initial_wear()
         if current_wear > self.belt_threshold:
             self.get_logger().info(f"The wear metric ({current_wear}) has exceeded the threshold of ({self.belt_threshold}). Please change the belt")
+            self.belt_worn = True 
         else:
             self.ask_next_test()
 
@@ -199,10 +249,17 @@ class TestCoordinator(Node):
     def usr_changed_belt(self, _):
         # The user signaled that the belt has been changed
         # Change the tracked belt file. 
-        self.belt_change()
+        if self.belt_worn:
+            self.belt_worn = False 
+            self.belt_change()
 
-        # The worn belt has been changed. Move on to the next test.
-        self.ask_next_test()
+            # Prime the next belt 
+            self.get_logger().info(f"Belt changed. Priming belt in {self.startup_delay} seconds")
+            self.prime_belt_countdown = self.create_timer(self.startup_delay, self.prime_belt)
+
+            # The worn belt has been changed. Move on to the next test.
+            # self.ask_next_test()
+    
 
     def usr_stop_testing(self, _):
         self.get_logger().info(f"The remaining tests will not be run. Exiting...")
@@ -231,9 +288,9 @@ class TestCoordinator(Node):
     def create_wear_msg(self):
         wear_csv = pd.read_csv(self.belt_tracking_path, delimiter=',')
         msg = BeltWearHistory()
-        msg.force           = list(wear_csv["force"])
-        msg.rpm             = list(wear_csv["rpm"])
-        msg.contact_time    = list(wear_csv["contact_time"])
+        msg.force           = list(wear_csv["force"].astype(float))
+        msg.rpm             = list(wear_csv["rpm"].astype(float))
+        msg.contact_time    = list(wear_csv["contact_time"].astype(float))
         msg.tracked_file    = str(self.belt_tracking_path)
         return msg 
         
@@ -261,7 +318,7 @@ class TestCoordinator(Node):
 
         with open(self.belt_tracking_path, "w") as f:
             f.write('force,rpm,contact_time\n')
-            f.write('0,0,0\n')       
+            f.write('0.0,0.0,0.0\n')       
 
     def wear_metric_calculation(self, force, rpm, time):
         """
@@ -273,13 +330,13 @@ class TestCoordinator(Node):
     # Methods related to setting the test parameters
     ############################################################################################################################################
 
-    def create_setting_list(self):
+    def create_setting_list(self, forces, rpms, contact_times):
         settings = []
-        for i in range(max(len(self.force_settings), len(self.rpm_settings), len(self.contact_time_settings))):
+        for i in range(max(len(forces), len(rpms), len(contact_times))):
             request = TestRequest.Request()
-            request.force           = float(self.force_settings[i%len(self.force_settings)])
-            request.rpm             = float(self.rpm_settings[i%len(self.rpm_settings)])
-            request.contact_time    = float(self.contact_time_settings[i%len(self.contact_time_settings)])
+            request.force           = float(forces[i%len(forces)])
+            request.rpm             = float(rpms[i%len(rpms)])
+            request.contact_time    = float(contact_times[i%len(contact_times)])
             settings.append(request)
         return settings 
 
@@ -346,10 +403,17 @@ def main(args=None):
 
     test_coordinator = TestCoordinator()
     executor = MultiThreadedExecutor()
-
-    rclpy.spin(test_coordinator, executor=executor)
+    try:
+        rclpy.spin(test_coordinator, executor=executor)
+    except KeyboardInterrupt:
+        pass 
     test_coordinator.destroy_node()
-    rclpy.shutdown()
+    
+    # Avoid stack trace 
+    try:
+        rclpy.shutdown()
+    except rclpy._rclpy_pybind11.RCLError:
+        pass 
 
 
 if __name__ == '__main__':
