@@ -22,35 +22,40 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "wear_test_V2"   
-    plate_thickness = 1.98 / 1000  # In meters 
+    sample      = "data_gathering_belt2_7"   
+    plate_thickness = 2.00 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
     # Main test settings 
     grit        = 120
-    force_settings = [5] 
-    rpm_settings = [10000]
-    contact_times = [10] * 5 + [30] * 10
+    force_settings = [3, 5, 7, 9] 
+    rpm_settings = [8000, 9500, 11000]
+    contact_times = [10, 15, 20] 
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
+    # Skip the first few tests ...
+    start_idx = 4 * 3 * 3- 21
     
-    # Prime the belt before starting the test.
-    initially_prime_new_belt = False 
+    # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
+    # The grinder behaves differently inside a groove compared to grinding a flat surface. 
+    initially_prime_new_belt = False
 
     # Belt wear tracking file path
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_weartestV2_grit_120.csv"
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_2_grit_120.csv"
 
-    # Threshold of force * rpm * time after which the belt needs to be changed
-    wear_threshold = 100e9    
+    # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
+    # but are not proven to be.
+    wear_threshold = 5e7    
 
     ##############################################################################################################################
 
 
     # Settings for priming a new belt. This is a single run that is performed if the belt is changed
-    belt_prime_force    = 3
-    belt_prime_rpm      = 9000
-    belt_prime_time     = 5
+    # It is also recommended to start a groove when a plate is switched, as behaviour on a flat surface and inside a groove seems to differ
+    belt_prime_force    = 5
+    belt_prime_rpm      = 10000
+    belt_prime_time     = 15
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
@@ -58,14 +63,15 @@ def generate_launch_description():
 
     # _desired_flowrate = 100 * (desired_rpm - 3400) / 7600
     
+    time_before_extend = 3.
     data_collector = Node(
         package=pkg,
         executable="data_collector",
         parameters=[{
-             'timeout_time':            float(max(contact_times) * 3),    # Duration before timeout of a single test
-             'time_before_extend':      3.,     # Duration between initial spin up of grinder and ACF extension
+             'timeout_time':            float((max(contact_times) + time_before_extend) * 1.5),    # Duration before timeout of a single test
+             'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
              'grinder_enabled':         True,   # Enable/Disable the grinder with True/False
-             'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in meters 
+             'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
             }
         ]
     )
@@ -74,18 +80,18 @@ def generate_launch_description():
         package=pkg,
         executable="test_coordinator",
         parameters=[
-            {'force_settings':          force_settings,    # Force of the ACF (N)     
-             'rpm_settings':            rpm_settings,      # RPM of the grinder
-             'contact_time_settings':   contact_times,     # Duration to grind (s)
+            {'force_settings':          force_settings[start_idx:],    # Force of the ACF (N)     
+             'rpm_settings':            rpm_settings[start_idx:],      # RPM of the grinder
+             'contact_time_settings':   contact_times[start_idx:],     # Duration to grind (s)
              'grit':                    grit,              # Grit of the belt (only for logging purposes)
              'sample':                  sample,            # Sample number (only for logging purposes)
              'wear_threshold':          wear_threshold,    # Threshold of the belt wear metric before requiring a change
              'plate_thickness':         plate_thickness,   # The thickness of the tested plate (m)
-             'wear_tracking_path':      belt_wear_path,
-             "belt_prime_force":        belt_prime_force,
-             "belt_prime_rpm":          belt_prime_rpm, 
-             "belt_prime_time":         belt_prime_time,
-             "initial_prime":           initially_prime_new_belt
+             'wear_tracking_path':      belt_wear_path,             # Path to wear tracking file
+             "belt_prime_force":        belt_prime_force,           # Force to use for priming the belt
+             "belt_prime_rpm":          belt_prime_rpm,             # RPM to use for priming the belt
+             "belt_prime_time":         belt_prime_time,            # Duration to prime the belt 
+             "initial_prime":           initially_prime_new_belt    # Prime the belt before any test is run. 
             }
         ]
     )

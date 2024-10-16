@@ -75,6 +75,11 @@ class TestCoordinator(Node):
         if not self.volume_data_path or self.volume_data_path == pathlib.Path('.'):
             self.volume_data_path = self.data_path / 'volume_data'
 
+        directories = [self.data_path, self.record_path, self.volume_data_path]
+        for directory in directories:
+            if not os.path.isdir(directory):
+                os.mkdir(directory)
+
         self.test_setting_validity()
         self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.contact_time_settings)
         self.test_index = 0
@@ -148,9 +153,11 @@ class TestCoordinator(Node):
         self.primed_belt = True # Indicate that a new 'before' scan should be made 
 
         if not success:
-            self.get_logger().error(f"\n\nThe belt prime seems to have failed due to:\n{result.message}\n")
+            self.get_logger().error(f"\n\n\nThe belt prime seems to have failed due to:\n{result.message}\n\n")
             self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
         
+        self.update_wear_history(result.force, result.rpm, result.contact_time)
+
         self.rosbag.stop_recording()
         self.ask_next_test()       
 
@@ -160,9 +167,9 @@ class TestCoordinator(Node):
         
         self.start_rosbag()
 
-        # Publish the current wear history to store it in the rosbag 
-        self.belt_wear_publisher.publish(self.create_wear_msg())
-
+        # Publish the current wear history in one second to ensure it is not lost while the rosbag is starting up 
+        self.belt_pub_timer = self.create_timer(1, self.pub_wear)
+        
         # Perform an initial scan if this is the first test or if the belt was just primed
         if self.test_index == 0 or self.primed_belt:
             self.primed_belt = False 
@@ -284,6 +291,10 @@ class TestCoordinator(Node):
     # Methods related to tracking the belt wear 
     ############################################################################################################################################
 
+    def pub_wear(self):
+        self.belt_pub_timer.cancel()
+        self.belt_wear_publisher.publish(self.create_wear_msg())
+
     def update_wear_history(self, force, rpm, time):
         with open(self.belt_tracking_path, 'a') as f:
             f.write(f'{force},{rpm},{time}\n')
@@ -331,7 +342,7 @@ class TestCoordinator(Node):
 
     def wear_metric_calculation(self, force, rpm, time):
         """
-        This is a metric by which wear belt wear is measured, it does not have an exact physical meaning. 
+        This is the metric by which wear belt wear is measured 
         """
         return sum(force * rpm * time)
 

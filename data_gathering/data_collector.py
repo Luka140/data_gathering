@@ -1,3 +1,4 @@
+import pyads.errorcodes
 import rclpy 
 from rclpy.node import Node
 from rclpy.impl import rcutils_logger
@@ -44,6 +45,9 @@ class DataCollector(Node):
         self.belt_halted = False                # Flag for test failure because the grinding belt got caught 
         self.shutdown_started = False           # Indicates whether the shutdown procedure started 
 
+        self.retry_rate = self.create_rate(5)
+        self.plc_retries = 10
+
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
         self.time_sync_timer     = self.create_timer(0.5, self.sync_callback)
@@ -52,7 +56,7 @@ class DataCollector(Node):
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
         self.rpm_notification_handle, self._user_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback, user_handle=3)
 
-        self.maintain_connection_timer = self.create_timer(3, self.wake_up_connection)
+        # self.maintain_connection_timer = self.create_timer(3, self.wake_up_connection)
 
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-5.))
@@ -150,14 +154,28 @@ class DataCollector(Node):
 
         # Turn on grinder 
         self.publisher_rpm_req.publish(Int32Stamped(data=int(request.rpm), header=Header(stamp=self.get_clock().now().to_msg())))
-        self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
-        self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+        
+        for i in range(self.plc_retries):
+            try:
+                self.plc.write_by_name('', self.desired_flowrate_scaled, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+                self.plc.write_by_name(self.grinder_on_var, self.grinder_enabled)
+            except pyads.pyads_ex.ADSError as e:
+                self.get_logger().error(f"ADS error occured: {e}")
+                self.get_logger().info(f"Retrying {self.plc_retries - i -1} more times") 
+                self.retry_rate.sleep()
+                if not self.plc.is_open:
+                    self.plc.open()
+                    self.retry_rate.sleep()
+                continue
+            break 
+
 
         # Start after spin up duration
         self.spin_up_wait = self.create_timer(self.spin_up_duration, self.spin_up_period_done)
 
         wait_for_finish_rate = self.create_rate(1)
         # Hang the response until the test is done as indicated by a shutdown_sequence call
+        # Blocks a thread.... Fix later :)
         while not self.test_done:
             wait_for_finish_rate.sleep()
 
@@ -212,8 +230,20 @@ class DataCollector(Node):
         
         # Stop the grinder
         self.desired_flowrate_scaled = 0 
-        self.plc.write_by_name(self.grinder_on_var, False)
-        self.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+
+        for i in range(self.plc_retries):
+            try:    
+                self.plc.write_by_name(self.grinder_on_var, False)
+                self.plc.write_by_name('', 0, pyads.PLCTYPE_REAL, handle=self.rpm_control_handle)
+            except pyads.pyads_ex.ADSError as e:
+                self.get_logger().error(f"ADS error occured: {e}")
+                self.get_logger().info(f"Retrying {self.plc_retries - i -1} more times") 
+                self.retry_rate.sleep()
+                if not self.plc.is_open:
+                    self.plc.open()
+                    self.retry_rate.sleep()
+                continue
+            break 
         
         # Stop the command timer 
         self.test_done = True 
@@ -225,7 +255,7 @@ class DataCollector(Node):
         
         # Check whether the belt is getting caught 
         if self.initial_contact_time is not None and not self.belt_halted and not self.shutdown_started and abs(value / self.desired_rpm) < 0.3:
-            self.test_succes = False 
+            self.test_success = False 
             self.belt_halted = True 
             self.failure_message += '\nThe belt RPM dropped below 30 percent of the target RPM during contact.'
     
@@ -254,7 +284,19 @@ class DataCollector(Node):
         """Creates a TimeSync message which contains a timestamp from the PLC and ROS to compare later.
         """
         sync_msg = TimeSync()
-        plc_datetime = datetime.fromisoformat(self.plc.read_by_name('', pyads.PLCTYPE_STRING, handle=self.time_handle))
+        for i in range(self.plc_retries):
+            try:    
+                plc_datetime = datetime.fromisoformat(self.plc.read_by_name('', pyads.PLCTYPE_STRING, handle=self.time_handle))
+            except pyads.pyads_ex.ADSError as e:
+                self.get_logger().error(f"ADS error occured: {e}")
+                self.get_logger().info(f"Retrying {self.plc_retries - i -1} more times") 
+                self.retry_rate.sleep()
+                if not self.plc.is_open:
+                    self.plc.open()
+                    self.retry_rate.sleep()
+                continue
+            break 
+        
         ros_time = self.get_clock().now().to_msg()
         plc_time = self.datetime_to_msg(plc_datetime)
 
@@ -275,11 +317,12 @@ class DataCollector(Node):
         """
         return 100 * (rpm - 3400) / 7600
      
-    def wake_up_connection(self):
-        """ The PLC seems to lose connection after some timer without interaction, leading to errors. 
-            This timer is an attempt at keeping the connection alive by interacting with the plc every couple of seconds.
-        """
-        self.plc.read_by_name(self.grinder_on_var)
+    # def wake_up_connection(self):
+    #     """ The PLC seems to lose connection after some timer without interaction, leading to errors. 
+    #         This timer is an attempt at keeping the connection alive by interacting with the plc every couple of seconds.
+    #     """
+
+    #     self.plc.read_by_name(self.grinder_on_var)
 
             
 def main(args=None):
