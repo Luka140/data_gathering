@@ -1,6 +1,7 @@
 import rclpy 
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from rcl_interfaces.msg import ParameterDescriptor 
 from data_gathering_msgs.srv import TestRequest,  RequestPCL, RequestPCLVolumeDiff
@@ -87,9 +88,9 @@ class TestCoordinator(Node):
         self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
                 
         self.test_client            = self.create_client(TestRequest, "execute_test")
-        self.user_stop_testing      = self.create_subscription(Empty, "stop_testing", self.usr_stop_testing, 1)
-        self.user_continue_testing  = self.create_subscription(Empty, "continue_testing", self.usr_continue_testing, 1)
-        self.user_changed_belt      = self.create_subscription(Empty, "changed_belt", self.usr_changed_belt, 1)
+        self.user_stop_testing      = self.create_subscription(Empty, "stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        self.user_continue_testing  = self.create_subscription(Empty, "continue_testing", self.usr_continue_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        self.user_changed_belt      = self.create_subscription(Empty, "changed_belt", self.usr_changed_belt, 1, callback_group=MutuallyExclusiveCallbackGroup())
         self.failure_publisher      = self.create_publisher(String, 'test_failure', 1)
         self.belt_wear_publisher    = self.create_publisher(BeltWearHistory, 'belt_wear_history', 1)
 
@@ -230,9 +231,15 @@ class TestCoordinator(Node):
 
     def volume_calc_done_callback(self, data_path, future):
         result = future.result()
+        success = result.success
+
+        if not success:
+            self.get_logger().error(f"\n\nThe volume calculation seems to have failed due to:\n{result.message}\n")
+            self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
+        
         self.write_pcl(result.difference_pointcloud, data_path / 'difference_pcl.ply')
         
-        #write empty text file with details in the file name for volume csv creation
+        #write empty text file with details in the file name for volume csv creation # TODO remove
         test_settings = self.settings[self.test_index]
         filename = f"volume_sample{self.sample_id}_f{test_settings.force}_rpm{test_settings.rpm}_t{test_settings.contact_time}_vol{result.volume_difference:.4f}.txt"
         (self.volume_data_path / filename).touch()  # This creates an empty file

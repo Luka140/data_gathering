@@ -22,7 +22,7 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "data_gathering_belt2_7"   
+    sample      = "post_volfix_time_var_4"   
     plate_thickness = 2.00 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
@@ -30,19 +30,19 @@ def generate_launch_description():
     grit        = 120
     force_settings = [3, 5, 7, 9] 
     rpm_settings = [8000, 9500, 11000]
-    contact_times = [10, 15, 20] 
+    contact_times = [5, 7.5, 12.5, 17.5] 
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
     # Skip the first few tests ...
-    start_idx = 4 * 3 * 3- 21
+    start_idx = len(force_settings) * len(rpm_settings) * len(contact_times) - 9
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
     initially_prime_new_belt = False
 
     # Belt wear tracking file path
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_2_grit_120.csv"
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_3_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
@@ -105,10 +105,6 @@ def generate_launch_description():
              'ramp_duration': 0.,
              'frequency':120,
              'payload': 1.6,
-            #  'control_p': 0.9,
-            #  'control_i': 9 / 1000,
-            #  'control_d': 30  / 1000,
-            #  'f_max': 20
             }
         ]
     )
