@@ -67,12 +67,12 @@ Parameters:
 - `max_acf_extension`: Maximum allowed ACF extension.
 
 Topics:
-- /acf/force [Float32Stamped](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/Float32Stamped.msg): Publishes the force applied during grinding.
-- /grinder/rpm [Int32Stamped](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/Int32Stamped.msg): Publishes the grinder's actual RPM. Solely for logging purposes.
-- /grinder/requested_rpm [Int32Stamped](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/Int32Stamped.msg): Publishes the requested RPM. Solely for logging purposes.
-- /timesync [TimeSync](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/TimeSync.msg): Publishes time synchronization messages between ROS and PLC.
+- `/acf/force` [Float32Stamped](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/Float32Stamped.msg): Publishes the force applied during grinding.
+- `/grinder/rpm` [Int32Stamped](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/Int32Stamped.msg): Publishes the grinder's actual RPM. Solely for logging purposes.
+- `/grinder/requested_rpm` [Int32Stamped](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/Int32Stamped.msg): Publishes the requested RPM. Solely for logging purposes.
+- `/timesync` [TimeSync](https://github.com/Luka140/stamped_std_msgs/blob/main/msg/TimeSync.msg): Publishes time synchronization messages between ROS and PLC.
 
- - /acf/telem [ACFTelemStamped](https://github.com/Luka140/ferrobotics_acf/blob/humble/msg/ACFTelemStamped.msg): Subscribes to ACF telemetry, handling force and position data.
+ - `/acf/telem` [ACFTelemStamped](https://github.com/Luka140/ferrobotics_acf/blob/humble/msg/ACFTelemStamped.msg): Subscribes to ACF telemetry, handling force and position data.
 
 Services:
 - execute_test [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Starts a test by setting force, RPM, and contact duration. It handles RPM control, ACF engagement, monitoring grinder performance, and managing shutdown sequences on test completion or failure.
@@ -102,14 +102,14 @@ Parameters:
 
 
 Topics:
-- `stop_testing` [Empty]: Send Empty msg to this topic to stop testing when prompted (Currently does not do anything...)
-- `continue_testing` [Empty]: Send Empty msg to this topic to continue testing when prompted
-- `changed_belt` [Empty]: Send Empty msg to this topic to confirm you have changed the belt when prompted
+- `/stop_testing` [Empty]: Send Empty msg to this topic to stop testing when prompted (Currently does not do anything...)
+- `/continue_testing` [Empty]: Send Empty msg to this topic to continue testing when prompted
+- `/changed_belt` [Empty]: Send Empty msg to this topic to confirm you have changed the belt when prompted
 
-- `test_failure` [String]: Publishes a message indicating that a test has failed and why.
-- `belt_wear_history` [BeltWearHistory](https://github.com/Luka140/data_gathering_msgs/blob/main/msg/BeltWearHistory.msg): Publishes the belt wear on the currently tracked belt for logging purposes
+- `/test_failure` [String]: Publishes a message indicating that a test has failed and why.
+- `/belt_wear_history` [BeltWearHistory](https://github.com/Luka140/data_gathering_msgs/blob/main/msg/BeltWearHistory.msg): Publishes the belt wear on the currently tracked belt for logging purposes
   
 Clients:
 - `execute_loop` [RequestPCL](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/RequestPCL.srv): Requests a scan of the test object
--  `calculate_volume_lost` [RequestPCLVolumeDiff](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/RequestPCLVolumeDiff.srv): Requests the comparison of two pointclouds and the calculation of lost volume.
--  `execute_test` [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Requests a test from data_collector.
+- `calculate_volume_lost` [RequestPCLVolumeDiff](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/RequestPCLVolumeDiff.srv): Requests the comparison of two pointclouds and the calculation of lost volume.
+- `execute_test` [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Requests a test from data_collector.
