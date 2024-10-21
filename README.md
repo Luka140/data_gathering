@@ -98,7 +98,7 @@ Parameters:
 - `data_path`: path to the data storage location
 - `wear_tracking_path`: path to the storage location of the belt run history to calculate wear
 - `test_tracker_path`: path to file which tracks all tests that have been run
-- `record_path`: path to 
+- `record_path`: path to rosbag storage
 
 
 Topics:
