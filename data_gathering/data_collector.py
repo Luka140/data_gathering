@@ -14,7 +14,6 @@ from data_gathering_msgs.srv import TestRequest
 import pyads
 import ctypes
 from datetime import datetime
-import math
 
 
 class DataCollector(Node):

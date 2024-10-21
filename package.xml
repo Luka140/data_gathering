@@ -3,8 +3,8 @@
 <package format="3">
   <name>data_gathering</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="ros@todo.todo">ros</maintainer>
+  <description>A package to automate grinder testing using a UR16 equiped with a LLS, and a grinder on an ACF</description>
+  <maintainer email="luka-groot@hotmail.nl"> Luka Distelbrink</maintainer>
   <license>Apache-2.0</license>
 
   <test_depend>ament_copyright</test_depend>
@@ -14,8 +14,20 @@
   <build_depend>glob</build_depend>
 
   <depend>data_gathering_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>stamped_std_msgs</depend>
+  <depend>ferrobotics_acf</depend> 
+  <depend>sensor_msgs</depend>
 
   <exec_depend>pyads</exec_depend>
+  <exec_depend>ctypes</exec_depend>
+  <exec_depend>datetime</exec_depend>
+  <exec_depend>subprocess</exec_depend>
+  <exec_depend>pathlib</exec_depend>
+  <exec_depend>threading</exec_depend>
+  <exec_depend>time</exec_depend>
+  <exec_depend>functools</exec_depend>
+
   <export>
     <build_type>ament_python</build_type>
   </export>
