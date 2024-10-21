@@ -73,10 +73,8 @@ class TestCoordinator(Node):
             self.performed_tests_path = self.data_path / 'performed_tests.csv'
         if not self.record_path or self.record_path == pathlib.Path('.'):
             self.record_path = self.data_path / 'test_data'
-        if not self.volume_data_path or self.volume_data_path == pathlib.Path('.'):
-            self.volume_data_path = self.data_path / 'volume_data'
-
-        directories = [self.data_path, self.record_path, self.volume_data_path]
+        
+        directories = [self.data_path, self.record_path]
         for directory in directories:
             if not os.path.isdir(directory):
                 os.mkdir(directory)
@@ -239,11 +237,6 @@ class TestCoordinator(Node):
         
         self.write_pcl(result.difference_pointcloud, data_path / 'difference_pcl.ply')
         
-        #write empty text file with details in the file name for volume csv creation # TODO remove
-        test_settings = self.settings[self.test_index]
-        filename = f"volume_sample{self.sample_id}_f{test_settings.force}_rpm{test_settings.rpm}_t{test_settings.contact_time}_vol{result.volume_difference:.4f}.txt"
-        (self.volume_data_path / filename).touch()  # This creates an empty file
-
         self.rosbag.stop_recording()
         
         self.test_index += 1     
