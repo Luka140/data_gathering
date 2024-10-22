@@ -22,7 +22,7 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "post_volfix_time_var_4"   
+    sample      = "..."   
     plate_thickness = 2.00 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
@@ -35,14 +35,14 @@ def generate_launch_description():
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
     # Skip the first few tests ...
-    start_idx = len(force_settings) * len(rpm_settings) * len(contact_times) - 9
+    start_idx = 0
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
     initially_prime_new_belt = False
 
-    # Belt wear tracking file path
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_3_grit_120.csv"
+    # Belt wear tracking file path  # TODO CHECK CURRENT INSTALLED BELT
+    belt_wear_path = "src/data_gathering/data/belt_data/....csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
@@ -50,6 +50,7 @@ def generate_launch_description():
 
     ##############################################################################################################################
 
+    local_bbox_max = 0.17   # Maximum distance the scanner. Any object further away is ignored
 
     # Settings for priming a new belt. This is a single run that is performed if the belt is changed
     # It is also recommended to start a groove when a plate is switched, as behaviour on a flat surface and inside a groove seems to differ
@@ -125,7 +126,7 @@ def generate_launch_description():
             'auto_loop': 'false',             
             'save_mesh': 'false',             
             'bbox_max': '0.0',
-            'local_bbox_max': '0.17'                   
+            'local_bbox_max': str(local_bbox_max)'                   
         }.items()
     )
 

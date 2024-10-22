@@ -55,8 +55,6 @@ class DataCollector(Node):
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
         self.rpm_notification_handle, self._user_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback, user_handle=3)
 
-        # self.maintain_connection_timer = self.create_timer(3, self.wake_up_connection)
-
         # Retract ACF before startup
         self.publisher_force.publish(Float32Stamped(header=Header(), data=-5.))
         self.force_desired = -5
@@ -316,13 +314,6 @@ class DataCollector(Node):
         """
         return 100 * (rpm - 3400) / 7600
      
-    # def wake_up_connection(self):
-    #     """ The PLC seems to lose connection after some timer without interaction, leading to errors. 
-    #         This timer is an attempt at keeping the connection alive by interacting with the plc every couple of seconds.
-    #     """
-
-    #     self.plc.read_by_name(self.grinder_on_var)
-
             
 def main(args=None):
     rclpy.init(args=args)

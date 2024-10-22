@@ -43,7 +43,6 @@ class TestCoordinator(Node):
         self.declare_parameter("wear_tracking_path", "")
         self.declare_parameter("test_tracker_path", "")
         self.declare_parameter("record_path", "")
-        self.declare_parameter("volume_data_path", "")
 
         self.force_settings         = self.get_parameter("force_settings").value
         self.rpm_settings           = self.get_parameter("rpm_settings").value
@@ -62,7 +61,6 @@ class TestCoordinator(Node):
         self.belt_tracking_path     = pathlib.Path(self.get_parameter("wear_tracking_path").value)
         self.performed_tests_path   = pathlib.Path(self.get_parameter("test_tracker_path").value)
         self.record_path            = pathlib.Path(self.get_parameter("record_path").value)
-        self.volume_data_path       = pathlib.Path(self.get_parameter("volume_data_path").value)
 
         # Set default paths if any parameter is empty
         if not self.data_path or self.data_path == pathlib.Path('.'):
