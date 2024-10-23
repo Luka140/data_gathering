@@ -284,6 +284,7 @@ class TestCoordinator(Node):
     
     def usr_continue_testing(self, _):
         if self.ready_for_next:
+            self.ready_for_next = False 
             self.test_start_countdown = self.create_timer(self.startup_delay, self.execute_test)
             self.get_logger().info(f"Next test starting in {self.startup_delay} seconds.")
         else:
