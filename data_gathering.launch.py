@@ -22,15 +22,15 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "..."   
+    sample      = "TESTangled"   
     plate_thickness = 2.00 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
     # Main test settings 
     grit        = 120
-    force_settings = [3, 5, 7, 9] 
-    rpm_settings = [8000, 9500, 11000]
-    contact_times = [5, 7.5, 12.5, 17.5] 
+    force_settings = [5] 
+    rpm_settings = [11000]
+    contact_times = [10]  # TODO REMEMBER CHANGE BELT --- REMEMBER CHECK BAG
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
@@ -39,10 +39,10 @@ def generate_launch_description():
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
-    initially_prime_new_belt = False
+    initially_prime_new_belt = False  
 
-    # Belt wear tracking file path  # TODO CHECK CURRENT INSTALLED BELT
-    belt_wear_path = "src/data_gathering/data/belt_data/....csv"
+    # Belt wear tracking file path  
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_initialincomplete_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
@@ -63,6 +63,8 @@ def generate_launch_description():
         force_settings, rpm_settings, contact_times = [[float(val) for val in ar.flatten()] for ar in np.hsplit(_settings_array, 3)]
 
     # _desired_flowrate = 100 * (desired_rpm - 3400) / 7600
+
+
     
     time_before_extend = 3.
     data_collector = Node(
@@ -92,7 +94,14 @@ def generate_launch_description():
              "belt_prime_force":        belt_prime_force,           # Force to use for priming the belt
              "belt_prime_rpm":          belt_prime_rpm,             # RPM to use for priming the belt
              "belt_prime_time":         belt_prime_time,            # Duration to prime the belt 
-             "initial_prime":           initially_prime_new_belt    # Prime the belt before any test is run. 
+             "initial_prime":           initially_prime_new_belt,    # Prime the belt before any test is run. 
+             "recorded_topics": ['/grinder/rpm',
+                                 '/acf/force',
+                                 '/acf/telem',
+                                 '/timesync',
+                                 '/scanner/volume',
+                                 '/belt_wear_history',
+                                 '/test_failure']
             }
         ]
     )
@@ -120,13 +129,13 @@ def generate_launch_description():
     scanner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(surface_scanner),
         launch_arguments={
-            'path_config': 'trajectory_test_plate_vertical.yaml',
+            'path_config': 'trajectory_test_plate_vertical_higher_start.yaml',
             'autonomous_execution': 'false',  
             'loop_on_service': 'true',        
             'auto_loop': 'false',             
             'save_mesh': 'false',             
             'bbox_max': '0.0',
-            'local_bbox_max': str(local_bbox_max)'                   
+            'local_bbox_max': str(local_bbox_max)                   
         }.items()
     )
 

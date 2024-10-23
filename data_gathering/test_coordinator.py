@@ -44,6 +44,8 @@ class TestCoordinator(Node):
         self.declare_parameter("test_tracker_path", "")
         self.declare_parameter("record_path", "")
 
+        self.declare_parameter("recorded_topics", ['-a'])
+
         self.force_settings         = self.get_parameter("force_settings").value
         self.rpm_settings           = self.get_parameter("rpm_settings").value
         self.contact_time_settings  = self.get_parameter("contact_time_settings").value
@@ -61,6 +63,8 @@ class TestCoordinator(Node):
         self.belt_tracking_path     = pathlib.Path(self.get_parameter("wear_tracking_path").value)
         self.performed_tests_path   = pathlib.Path(self.get_parameter("test_tracker_path").value)
         self.record_path            = pathlib.Path(self.get_parameter("record_path").value)
+
+        self.recorded_topics        = self.get_parameter("recorded_topics").value 
 
         # Set default paths if any parameter is empty
         if not self.data_path or self.data_path == pathlib.Path('.'):
@@ -101,7 +105,7 @@ class TestCoordinator(Node):
         if current_wear > self.belt_threshold:
             raise ValueError(f"The wear threshold {self.belt_threshold} has been exceeded ({current_wear}). Please change the belt.")
 
-        self.rosbag = RosbagRecorder(['-a'],  str(self.record_path), 'rosbag2', self.get_logger())
+        self.rosbag = RosbagRecorder(self.recorded_topics,  str(self.record_path), 'rosbag2', self.get_logger())
 
         self.startup_delay = 5
 
