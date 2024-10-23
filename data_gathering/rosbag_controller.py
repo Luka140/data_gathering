@@ -5,8 +5,7 @@ import threading
 import time
 
 """
-Class that starts and stops Rosbag recordings through command line.
-The performs a similar function to the ~/split_bagfile service in rosbag2 (https://github.com/ros2/rosbag2)
+Class that starts and stops Rosbag recordings through the command line, fulfilling a similar purpose to the ~/split_bagfile service in rosbag2 (https://github.com/ros2/rosbag2).
 This service is not available for ROS2 Humble, so this class uses CMD prompts to perform similar actions. 
 """
 

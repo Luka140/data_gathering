@@ -75,7 +75,7 @@ Topics:
  - `/acf/telem` [ACFTelemStamped](https://github.com/Luka140/ferrobotics_acf/blob/humble/msg/ACFTelemStamped.msg): Subscribes to ACF telemetry, handling force and position data.
 
 Services:
-- execute_test [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Starts a test by setting force, RPM, and contact duration. It handles RPM control, ACF engagement, monitoring grinder performance, and managing shutdown sequences on test completion or failure.
+- `execute_test` [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Starts a test by setting force, RPM, and contact duration. It handles RPM control, ACF engagement, monitoring grinder performance, and managing shutdown sequences on test completion or failure.
 
 
 ### test_coordinator
