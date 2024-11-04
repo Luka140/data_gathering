@@ -32,6 +32,7 @@ To build from source, clone the latest version from this repository into your wo
 - `scancontrol`: ROS Driver for Scancontrol laser line scanners
 - `lls_processing`: Compiles 3D pointcloud reconstructions based on TF transfers
 - `pcl_processing_ros2`: Used to calculate volume loss between two scans
+- `Universal_Robots_ROS2_Driver`: Driver for the UR16
 
 ```bash
 git clone git@github.com:Luka140/data_gathering.git
@@ -42,7 +43,7 @@ git clone git@github.com:Luka140/ur_trajectory_controller.git
 git clone git@github.com:Luka140/lls_processing.git
 git clone git@github.com:Luka140/scancontrol.git -b ros2-devel
 git clone git@github.com:panin-ananwa/pcl_processing_ros2.git
-
+sudo apt-get install ros-humble-ur
 ```
 and compile all of the packages:
 To build, after cloning all the packages:
@@ -115,4 +116,4 @@ Clients:
 - `execute_test` [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Requests a test from data_collector.
 
 # Overview
-![Untitled Diagram drawio](https://github.com/user-attachments/assets/6c3923aa-6dde-4e31-8eea-9a83a4b67f9c)
+![data_gathering_architecture drawio](https://github.com/user-attachments/assets/81f2189e-e6ac-4c56-98fc-8f3556a72aa4)
