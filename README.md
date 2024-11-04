@@ -1,4 +1,4 @@
-# SAMXL_GrinderRobot
+# Grinding model data gatherer
 
 ## Overview
 Code to perform automated testing of material removal using a pneumatic grinder. 
@@ -113,3 +113,6 @@ Clients:
 - `execute_loop` [RequestPCL](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/RequestPCL.srv): Requests a scan of the test object
 - `calculate_volume_lost` [RequestPCLVolumeDiff](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/RequestPCLVolumeDiff.srv): Requests the comparison of two pointclouds and the calculation of lost volume.
 - `execute_test` [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Requests a test from data_collector.
+
+# Overview
+![Untitled Diagram drawio](https://github.com/user-attachments/assets/6c3923aa-6dde-4e31-8eea-9a83a4b67f9c)
