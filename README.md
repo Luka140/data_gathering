@@ -116,4 +116,5 @@ Clients:
 - `execute_test` [TestRequest](https://github.com/Luka140/data_gathering_msgs/blob/main/srv/TestRequest.srv): Requests a test from data_collector.
 
 # Overview
+Normal arrows are topics, the double-sided arrows are services, and the dotted lines are only for data storage or monitoring purposes. 
 ![data_gathering_architecture drawio](https://github.com/user-attachments/assets/81f2189e-e6ac-4c56-98fc-8f3556a72aa4)
