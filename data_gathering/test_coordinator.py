@@ -97,17 +97,17 @@ class TestCoordinator(Node):
 
         self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
                 
-        self.test_client            = self.create_client(TestRequest, "execute_test")
+        self.test_client            = self.create_client(TestRequest, "data_collector/execute_test")
 
         # Empty subscriptions for user input to trigger certain actions 
-        self.user_stop_testing      = self.create_subscription(Empty, "stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
-        self.user_continue_testing  = self.create_subscription(Empty, "continue_testing", self.usr_continue_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
-        self.user_changed_belt      = self.create_subscription(Empty, "changed_belt", self.usr_changed_belt, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        self.user_stop_testing      = self.create_subscription(Empty, "user/stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        self.user_continue_testing  = self.create_subscription(Empty, "user/continue_testing", self.usr_continue_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        self.user_changed_belt      = self.create_subscription(Empty, "user/changed_belt", self.usr_changed_belt, 1, callback_group=MutuallyExclusiveCallbackGroup())
 
-        self.failure_publisher      = self.create_publisher(String, 'test_failure', 1)                  # Publish failure message for logging 
-        self.belt_wear_publisher    = self.create_publisher(BeltWearHistory, 'belt_wear_history', 1)    # Publish belt wear for logging 
-        self.grind_area_publisher   = self.create_publisher(GrindArea, "grind_area", 1)                 # Publish belt width and plate thickness for logging 
-        self.publisher_volume       = self.create_publisher(Float32Stamped, '/scanner/volume', 1)       # Publish removed volume 
+        self.failure_publisher      = self.create_publisher(String, '~/test_failure', 1)                  # Publish failure message for logging 
+        self.belt_wear_publisher    = self.create_publisher(BeltWearHistory, '~/belt_wear_history', 1)    # Publish belt wear for logging 
+        self.grind_area_publisher   = self.create_publisher(GrindArea, "~/grind_area", 1)                 # Publish belt width and plate thickness for logging 
+        self.publisher_volume       = self.create_publisher(Float32Stamped, '~/volume', 1)       # Publish removed volume 
 
         self.scan_surface_trigger     = self.create_client(RequestPCL, 'execute_loop')                      # Request a scan of the test object
         self.calculate_volume_trigger = self.create_client(RequestPCLVolumeDiff, 'calculate_volume_lost')   # Request calculation of the removed volume 

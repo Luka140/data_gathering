@@ -26,13 +26,13 @@ class DataCollector(Node):
                 
         # Setup ROS interfaces 
         self.publisher_force     = self.create_publisher(Float32Stamped, '/acf/force', 10)
-        self.publisher_rpm       = self.create_publisher(Int32Stamped, '/grinder/rpm', 10)
-        self.publisher_rpm_req   = self.create_publisher(Int32Stamped, '/grinder/requested_rpm', 10)
-        self.publisher_time_sync = self.create_publisher(TimeSync, '/timesync', 10)
+        self.publisher_rpm       = self.create_publisher(Int32Stamped, '~/rpm', 10)
+        self.publisher_rpm_req   = self.create_publisher(Int32Stamped, '~/requested_rpm', 10)
+        self.publisher_time_sync = self.create_publisher(TimeSync, '~/timesync', 10)
 
         # Without a mutually exclusive group, this callback may lead to multiple test_done timers being created unintentionally
         self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 5, callback_group=MutuallyExclusiveCallbackGroup())
-        self.test_server         = self.create_service(TestRequest, 'execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
+        self.test_server         = self.create_service(TestRequest, '~/execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
 
         # Initialize flags 
         self.test_done = False                  # Indicates when TestRequest response is finished. Set in shutdown_sequence
@@ -172,7 +172,9 @@ class DataCollector(Node):
 
         wait_for_finish_rate = self.create_rate(1)
         # Hang the response until the test is done as indicated by a shutdown_sequence call
-        # Blocks a thread.... Fix later :)
+        # TODO Blocks a thread.... Fix later :)
+        # Maybe this should be an action server instead of a service. 
+        
         while not self.test_done:
             wait_for_finish_rate.sleep()
 

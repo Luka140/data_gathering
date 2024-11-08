@@ -22,32 +22,31 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = ""   
-    plate_thickness =  / 1000  # In meters 
+    sample      = "INTERFACE_REWRITE_TEST"   
+    plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
-
+    # TODO add prefixed to topics and services 
     grit        = 120
-    belt_width  =  / 1000    
+    belt_width  = 25. / 1000    
 
     # Main test settings 
-    force_settings = [4] 
+    force_settings = [3] 
     rpm_settings = [11000]
-    contact_times = [10] * 10 
+    contact_times = [5]
     repeat_test_count = 1      # Repeat a grind x times, and only scan afterwards. Then lost vol = lost vol / x. Detects lower volume. Set to 1 to scan after every grind 
     
-
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
     # Skip the first few tests ...
-    # start_idx = len(force_settings) * len(rpm_settings) * len(contact_times)  - 30
-    start_idx = 0
+    start_idx = len(force_settings) * len(rpm_settings) * len(contact_times)  - 15
+    # start_idx = 0
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
     initially_prime_new_belt = False 
 
     # Belt wear tracking file path  
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_9_grit_120.csv"
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_10_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
@@ -56,13 +55,13 @@ def generate_launch_description():
     ##############################################################################################################################
 
     # local_bbox_max = 0.17   # Maximum distance the scanner. Any object further away is ignored
-    local_bbox_max = 0.3   # Maximum distance the scanner. Any object further away is ignored
+    local_bbox_max = 0.35   # Maximum distance the scanner. Any object further away is ignored
 
     # Settings for priming a new belt. This is a single run that is performed if the belt is changed
     # It is also recommended to start a groove when a plate is switched, as behaviour on a flat surface and inside a groove seems to differ
     belt_prime_force    = 7
     belt_prime_rpm      = 11000
-    belt_prime_time     = 20
+    belt_prime_time     = 10
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
@@ -103,14 +102,14 @@ def generate_launch_description():
              "belt_prime_time":         belt_prime_time,            # Duration to prime the belt 
              "initial_prime":           initially_prime_new_belt,   # Prime the belt before any test is run. 
              "repeat_test_count":       repeat_test_count,          # Repeat every test x times before scanning to make the volume loss more detectable
-             "recorded_topics": ['/grinder/rpm',
+             "recorded_topics": ['/data_collector/rpm',
                                  '/acf/force',
                                  '/acf/telem',
-                                 '/timesync',
-                                 '/scanner/volume',
-                                 '/belt_wear_history',
-                                 '/test_failure',
-                                 '/grind_area']
+                                 '/data_collector/timesync',
+                                 '/test_coordinator/volume',
+                                 '/test_coordinator/belt_wear_history',
+                                 '/test_coordinator/test_failure',
+                                 '/test_coordinator/grind_area']
             }
         ]
     )
@@ -138,8 +137,8 @@ def generate_launch_description():
     scanner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(surface_scanner),
         launch_arguments={
-            # 'path_config': 'trajectory_test_plate_vertical2.yaml',
-            'path_config': 'trajectory_corner_grind.yaml',
+            'path_config': 'trajectory_dual_robot_setup.yaml',
+            # 'path_config': 'trajectory_corner_grind.yaml',
             'autonomous_execution': 'false',  
             'loop_on_service': 'true',        
             'auto_loop': 'false',             
@@ -151,11 +150,7 @@ def generate_launch_description():
 
     volume_calculator = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('pcl_processing_ros2'), 'launch', 'scan_and_process_pcl.launch.py'),
-            launch_arguments={
-                'belt_width_threshold': '0.3'
-            }.items()
-        )
+            os.path.join(get_package_share_directory('pcl_processing_ros2'), 'launch', 'scan_and_process_pcl.launch.py')),
     )
         
     if any([rpm < 3400 for rpm in rpm_settings]):
