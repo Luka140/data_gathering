@@ -8,6 +8,7 @@ It uses a laser line scanner on a UR16 to create a scan of the test plate. The g
 
 #### Dependencies (INCOMPLETE)
 - ROS2 Humble
+- Universal Robots ROS2 Driver
 - pyads
 - open3d
 
