@@ -4,6 +4,8 @@
 Code to perform automated testing of material removal using a pneumatic grinder. 
 It uses a laser line scanner on a UR16 to create a scan of the test plate. The grinder is then engaged and grinds away material for a set force, rpm, and duration. A second scan is then performed to measure the amount of material removed. The test data is recorded using rosbags.
 
+The recorded rosbags can be processed into .csv files for modelling using the [bag_converter](https://github.com/Luka140/bag_converter) package. 
+
 ## Installation
 
 #### Dependencies (INCOMPLETE)
