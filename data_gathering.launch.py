@@ -22,35 +22,35 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "INTERFACE_REWRITE_TEST"   
+    sample      = "dual_robot_rpm_investigation_quad_plate_2"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
     plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
-    # TODO add prefixed to topics and services 
+
     grit        = 120
     belt_width  = 25. / 1000    
 
     # Main test settings 
-    force_settings = [3] 
+    force_settings = [7, 8, 9] 
     rpm_settings = [11000]
-    contact_times = [5]
+    contact_times = [10]
     repeat_test_count = 1      # Repeat a grind x times, and only scan afterwards. Then lost vol = lost vol / x. Detects lower volume. Set to 1 to scan after every grind 
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = True 
     # Skip the first few tests ...
-    start_idx = len(force_settings) * len(rpm_settings) * len(contact_times)  - 15
-    # start_idx = 0
+    # start_idx = len(force_settings) * len(rpm_settings) * len(contact_times)  - 15
+    start_idx = 0
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
-    initially_prime_new_belt = False 
+    initially_prime_new_belt = True    
 
     # Belt wear tracking file path  
     belt_wear_path = "src/data_gathering/data/belt_data/beltid_10_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
-    wear_threshold = 5e7    
+    wear_threshold = 10e7    # TODO CHANGE BACK!!!!!!!
 
     ##############################################################################################################################
 
@@ -61,7 +61,7 @@ def generate_launch_description():
     # It is also recommended to start a groove when a plate is switched, as behaviour on a flat surface and inside a groove seems to differ
     belt_prime_force    = 7
     belt_prime_rpm      = 11000
-    belt_prime_time     = 10
+    belt_prime_time     = 15
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
@@ -137,7 +137,7 @@ def generate_launch_description():
     scanner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(surface_scanner),
         launch_arguments={
-            'path_config': 'trajectory_dual_robot_setup.yaml',
+            'path_config': 'trajectory_abb_grind.yaml',
             # 'path_config': 'trajectory_corner_grind.yaml',
             'autonomous_execution': 'false',  
             'loop_on_service': 'true',        
