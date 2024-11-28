@@ -26,7 +26,6 @@ setup(
             'data_collector = data_gathering.data_collector:main',
             f'test_coordinator = {package_name}.test_coordinator:main',
             f'rosbag_controller = {package_name}.rosbag_controller:main',
-            f'demo_plc = {package_name}.demo_plc:main'
         ],
     },
 )
