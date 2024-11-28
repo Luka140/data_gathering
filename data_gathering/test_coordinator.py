@@ -29,11 +29,15 @@ class TestCoordinator(Node):
         super().__init__('test_coordinator')
         self.declare_parameter("force_settings",        [], ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("rpm_settings",          [], ParameterDescriptor(dynamic_typing=True))
-        self.declare_parameter("contact_time_settings", [], ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("pass_count_settings",   [], ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("feed_rate_settings",    [], ParameterDescriptor(dynamic_typing=True))
+
         self.declare_parameter("grit", 120)
         self.declare_parameter("sample", "")
         self.declare_parameter("plate_thickness", 0.)
         self.declare_parameter("belt_width", 0.)
+        self.declare_parameter("movement_length", 0.)
+        self.declare_parameter("feed_rate_threshold", 10)
 
         self.declare_parameter("belt_prime_force",  3,      ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("belt_prime_rpm",    9000,   ParameterDescriptor(dynamic_typing=True))
@@ -52,11 +56,14 @@ class TestCoordinator(Node):
 
         self.force_settings         = self.get_parameter("force_settings").value
         self.rpm_settings           = self.get_parameter("rpm_settings").value
-        self.contact_time_settings  = self.get_parameter("contact_time_settings").value
+        self.pass_count_settings    = self.get_parameter("pass_count_settings").value
+        self.feed_rate_settings     = self.get_parameter("feed_rate_settings").value
         self.grit                   = self.get_parameter("grit").value
         self.sample_id              = self.get_parameter("sample").value
         self.plate_thickness        = self.get_parameter("plate_thickness").value 
         self.belt_width             = self.get_parameter("belt_width").value 
+        self.movement_length        = self.get_parameter("movement_length").value 
+        self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value 
 
         belt_prime_force    = self.get_parameter("belt_prime_force").value
         belt_prime_rpm      = self.get_parameter("belt_prime_rpm").value
@@ -399,8 +406,8 @@ class TestCoordinator(Node):
         return settings 
 
     def test_setting_validity(self):
-        if len(self.force_settings) == 0 or len(self.rpm_settings) == 0 or len(self.contact_time_settings) == 0:
-            raise ValueError("A value must be specified for 'force_settings', 'rpm_settings' and 'contact_time_settings'")
+        if len(self.force_settings) == 0 or len(self.rpm_settings) == 0 or len(self.pass_count_settings) or len(self.feed_rate_settings) == 0:
+            raise ValueError("A value must be specified for 'force_settings', 'rpm_settings', 'pass_count_settings' and 'feed_rate_settings'")
 
         _unique_settings = set([len(self.force_settings), len(self.rpm_settings), len(self.contact_time_settings)])
         _unique_settings.discard(1)
@@ -410,6 +417,9 @@ class TestCoordinator(Node):
         negatives = [setting for setting in [*self.force_settings, *self.rpm_settings, *self.contact_time_settings] if setting < 0]
         if len(negatives) > 0:
             raise ValueError("Force, RPM and contact time should be positive")
+        
+        if max(self.feed_rate_settings) > self.feed_rate_threshold:
+            raise ValueError("Feedrate above threshold")
 
 
     ############################################################################################################################################

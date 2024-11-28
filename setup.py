@@ -26,6 +26,7 @@ setup(
             'data_collector = data_gathering.data_collector:main',
             f'test_coordinator = {package_name}.test_coordinator:main',
             f'rosbag_controller = {package_name}.rosbag_controller:main',
+            f'grinder_node = {package_name}.grinder_node:main',
         ],
     },
 )

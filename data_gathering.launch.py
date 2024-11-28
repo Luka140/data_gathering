@@ -71,18 +71,18 @@ def generate_launch_description():
 
 
     
-    time_before_extend = 3.
-    data_collector = Node(
-        package=pkg,
-        executable="data_collector",
-        parameters=[{
-             'timeout_time':            float((max(contact_times) + time_before_extend) * 1.5),    # Duration before timeout of a single test
-             'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
-             'grinder_enabled':         True,   # Enable/Disable the grinder with True/False
-             'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
-            }
-        ]
-    )
+    # time_before_extend = 3.
+    # data_collector = Node(
+    #     package=pkg,
+    #     executable="data_collector",
+    #     parameters=[{
+    #          'timeout_time':            float((max(contact_times) + time_before_extend) * 1.5),    # Duration before timeout of a single test
+    #          'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
+    #          'grinder_enabled':         True,   # Enable/Disable the grinder with True/False
+    #          'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
+    #         }
+    #     ]
+    # )
 
     test_coordinator = Node(
         package=pkg,
