@@ -72,15 +72,15 @@ class DataCollector(Node):
         self.declare_parameter('plc_target_ams', '5.149.234.177.1.1')    # AMS ID of the PLC
         self.declare_parameter('plc_target_ip', '169.254.200.16')        # IP of the PLC
          
-        self.declare_parameter('timeout_time', 20.0)                     # Duration before timeout in seconds (float)
+        self.declare_parameter('timeout_time', 30.0)                     # Duration before timeout in seconds (float)
         self.declare_parameter('time_before_extend', 3.0)                # Duration after startup before extending the acf to allow for belt spin-up (float)
         
         self.declare_parameter('rpm_control_var', 'Flow_Control_valve.iScaledDesiredFlowRate') 
         self.declare_parameter('grinder_on_var', 'HMI.bOnOffPB')         # PLC variable controlling the on/off switch of the grinder
-        self.declare_parameter('grinder_enabled', False)                 # Turn the grinder on/off with True/False
+        self.declare_parameter('grinder_enabled', True)                 # Turn the grinder on/off with True/False
         self.declare_parameter('time_var', 'GVL_Var.sTimeSt')            # PLC variable for timestamp
 
-        self.declare_parameter('max_acf_extension', 0.3)                 # The maximum extension that can be reached by the ACF (float)
+        self.declare_parameter('max_acf_extension', 35.5)                 # The maximum extension that can be reached by the ACF (float)
 
         # Retrieve parameters (as the correct types)
         self.target_ams_plc         = self.get_parameter('plc_target_ams').get_parameter_value().string_value
