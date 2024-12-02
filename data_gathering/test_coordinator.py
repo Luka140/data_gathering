@@ -4,7 +4,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from rcl_interfaces.msg import ParameterDescriptor 
-from data_gathering_msgs.srv import TestRequest,  RequestPCL, RequestPCLVolumeDiff
+from data_gathering_msgs.srv import StartGrindTest,  RequestPCL, RequestPCLVolumeDiff
 from data_gathering_msgs.msg import BeltWearHistory, GrindArea
 from std_msgs.msg import Empty, String, Header
 from sensor_msgs.msg import PointCloud2
@@ -67,6 +67,7 @@ class TestCoordinator(Node):
         self.movement_length        = self.get_parameter("movement_length").value 
         self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value
 
+        #TODO settings is a list of settings must change rosbag suffix part into test_setting.feed_rate
         #calculated contact time, should be used for wear calculation
         self.contact_time_settings = self.pass_length_settings * self.pass_count_settings / self.feed_rate_settings
 
@@ -103,7 +104,7 @@ class TestCoordinator(Node):
                 os.mkdir(directory)
 
         self.test_setting_validity()
-        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.contact_time_settings)
+        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.feed_rates_settings, self.pass_count_settings, self.pass_length_settings,self.contact_time_settings)
         self.test_index = 0         # Index of the current test in the settings list 
         self.sub_test_index = 0     # Number of times a certain test has been repeated
 
@@ -400,12 +401,15 @@ class TestCoordinator(Node):
     # Methods related to setting the test parameters
     ############################################################################################################################################
 
-    def create_setting_list(self, forces, rpms, contact_times):
+    def create_setting_list(self, forces, rpms, feed_rates, num_pass, pass_lengths, contact_times):
         settings = []
-        for i in range(max(len(forces), len(rpms), len(contact_times))):
-            request                 = TestRequest.Request()
+        for i in range(max(len(forces), len(rpms), len(feed_rates), len(num_pass), len(pass_lengths),len(contact_times))):
+            request                 = StartGrindTest.Request()
             request.force           = float(forces[i%len(forces)])
             request.rpm             = float(rpms[i%len(rpms)])
+            request.passes          = int(num_pass[i%len(num_pass)])
+            request.tcp_speed       = float(feed_rates[i%len(feed_rates)])
+            request.pass_length     = float(pass_lengths[i%len(pass_lengths)])
             request.contact_time    = float(contact_times[i%len(contact_times)])
             settings.append(request)
         return settings 
@@ -433,7 +437,7 @@ class TestCoordinator(Node):
 
     def generate_rosbag_suffix(self):
         test_settings = self.settings[self.test_index]
-        return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_fr{self.feed_rate_settings}_np{self.pass_count_settings}_pl{self.pass_length_settings}_ct{self.contact_time_settings}'
+        return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_fr{test_settings.tcp_speed}_np{test_settings.passes}_pl{test_settings.pass_length}_ct{test_settings.contact_time}'
 
     def convert_ros_to_open3d(self, pcl_msg):
         # Extract the point cloud data from the ROS2 message
