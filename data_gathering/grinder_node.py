@@ -10,7 +10,7 @@ from stamped_std_msgs.msg import Float32Stamped, Int32Stamped, TimeSync
 from ferrobotics_acf.msg import ACFTelemStamped
 
 from std_srvs.srv import Trigger
-from data_gathering_msgs.srv import TestRequest, StartGrinder, StopGrinder
+from data_gathering_msgs.srv import StartGrinder, StopGrinder
 
 import pyads
 import ctypes
@@ -49,12 +49,14 @@ class GrinderNode(Node):
         # Timer for publishing TimeSync messages. This is set to a timer to ensure that there will be a usable message in the rosbag.
         # A message may not contain useful data if the PLC was not properly connected before creating a message 
         self.time_sync_timer     = self.create_timer(0.5, self.sync_callback)
+        self.test_timed_out_timer = None 
 
         # Get notifications from the PLC 
         atr = pyads.NotificationAttrib(ctypes.sizeof(ctypes.c_uint32))
         self.rpm_notification_handle, self._user_handle = self.plc.add_device_notification("GVL_Var.Actual_RPM", atr, self.rpm_callback, user_handle=3)
         
         # Set desired RPM to zero, turn off the grinder 
+        self.desired_rpm = 0 
         self.plc.write_by_name(self.rpm_control_var, 0)
         self.plc.write_by_name(self.grinder_on_var, False)
         
@@ -127,7 +129,7 @@ class GrinderNode(Node):
             return response 
         
         # Reset flags 
-        self.test_success = None    # Indicates whether the grind was successful - this will only be returned once the grinder is turned off again.
+        self.test_success = True    # Indicates whether the grind was successful - this will only be returned once the grinder is turned off again.
         self.failure_message = ''   # Stores potential failure messages to be returned when the grinder is turned off again.
         self.test_running = True    # Ensure that only one test can be started 
         self.belt_spun_up = False 
@@ -171,6 +173,7 @@ class GrinderNode(Node):
         if request.timeout_duration > 0.0:
             self.test_timed_out_timer = self.create_timer(request.timeout_duration, callback=self.timeout)
 
+        self.get_logger().info("Finished enable grinder request")
         return response
     
     def stop_grinder(self, _, response):
@@ -202,7 +205,8 @@ class GrinderNode(Node):
         
     def timeout(self):
         """ Timer callback for when the timeout time has elapsed eventhough the requested contact duration was not reached """
-        self.test_timed_out_timer.cancel()
+        if self.test_timed_out_timer is not None:
+            self.test_timed_out_timer.cancel()
         self.test_success = False   
         self.failure_message += f'Test timed out. Duration of {self.max_contact_time} exceeded.'
         self.get_logger().info(f'Test timed out. Duration of {self.max_contact_time} exceeded.')
@@ -214,7 +218,8 @@ class GrinderNode(Node):
         self.shutdown_started = True 
         self.get_logger().info(f"Turning off the grinder")
         
-        self.test_timed_out_timer.cancel()
+        if self.test_timed_out_timer is not None:
+            self.test_timed_out_timer.cancel()
 
         shutdown_success = True 
         shutdown_msg = ""
@@ -255,11 +260,11 @@ class GrinderNode(Node):
 
         # If belt is in spin up phase, check whether it has reached 80% RPM 
         if not self.belt_spun_up:
-            if abs(value / self.desired_rpm) > 0.8:
+            if abs(value / (self.desired_rpm + 1e-6)) > 0.8:
                 self.belt_spun_up = True 
         
         # Else if the belt is past spin up, check whether the belt is getting caught 
-        elif not self.belt_halted and not self.shutdown_started and abs(value / self.desired_rpm) < 0.3:
+        elif not self.belt_halted and not self.shutdown_started and abs(value / (self.desired_rpm + 1e-6)) < 0.3:
             self.test_success = False 
             self.belt_halted = True 
             self.failure_message += '\nThe belt RPM dropped below 30 percent of the target RPM during contact.'
