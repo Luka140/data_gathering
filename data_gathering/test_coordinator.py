@@ -29,8 +29,9 @@ class TestCoordinator(Node):
         super().__init__('test_coordinator')
         self.declare_parameter("force_settings",        [], ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("rpm_settings",          [], ParameterDescriptor(dynamic_typing=True))
-        self.declare_parameter("pass_count_settings",   [], ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("feed_rate_settings",    [], ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("pass_count_settings",   [], ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("pass_length_settings",  [], ParameterDescriptor(dynamic_typing=True))
 
         self.declare_parameter("grit", 120)
         self.declare_parameter("sample", "")
@@ -56,14 +57,18 @@ class TestCoordinator(Node):
 
         self.force_settings         = self.get_parameter("force_settings").value
         self.rpm_settings           = self.get_parameter("rpm_settings").value
-        self.pass_count_settings    = self.get_parameter("pass_count_settings").value
         self.feed_rate_settings     = self.get_parameter("feed_rate_settings").value
+        self.pass_count_settings    = self.get_parameter("pass_count_settings").value
+        self.pass_length_settings   = self.get_parameter("pass_length_settings").value
         self.grit                   = self.get_parameter("grit").value
         self.sample_id              = self.get_parameter("sample").value
         self.plate_thickness        = self.get_parameter("plate_thickness").value 
         self.belt_width             = self.get_parameter("belt_width").value 
         self.movement_length        = self.get_parameter("movement_length").value 
-        self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value 
+        self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value
+
+        #calculated contact time, should be used for wear calculation
+        self.contact_time_settings = self.pass_length_settings * self.pass_count_settings / self.feed_rate_settings
 
         belt_prime_force    = self.get_parameter("belt_prime_force").value
         belt_prime_rpm      = self.get_parameter("belt_prime_rpm").value
@@ -428,7 +433,7 @@ class TestCoordinator(Node):
 
     def generate_rosbag_suffix(self):
         test_settings = self.settings[self.test_index]
-        return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_t{test_settings.contact_time}'
+        return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_fr{self.feed_rate_settings}_np{self.pass_count_settings}_pl{self.pass_length_settings}_ct{self.contact_time_settings}'
 
     def convert_ros_to_open3d(self, pcl_msg):
         # Extract the point cloud data from the ROS2 message
