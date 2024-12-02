@@ -177,6 +177,8 @@ class GrinderNode(Node):
         return response
     
     def stop_grinder(self, _, response):
+        response.success = True 
+        response.message = ""
         
         # Grinder has already stopped - potentially because of timeout
         if not self.test_running:
@@ -200,7 +202,7 @@ class GrinderNode(Node):
             response.message += f"\n{shutdown_msg}"
             response.grind_successful = False 
             response.grind_message += f"\n{shutdown_msg}"
-
+        self.get_logger().info(f"response success: {response.success}\nresponse msg: {response.message}\ngrind_success: {response.grind_successful}\ngrind_msg: {response.grind_message}")
         return response 
         
     def timeout(self):
