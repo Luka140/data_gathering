@@ -22,7 +22,7 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "moving_robot_feed_rate_investigation_2"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
+    sample      = "TEST"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
     plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
@@ -45,7 +45,7 @@ def generate_launch_description():
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
-    initially_prime_new_belt = True    
+    initially_prime_new_belt = False    
 
     # Belt wear tracking file path  
     belt_wear_path = "src/data_gathering/data/belt_data/beltid_10_grit_120.csv"
@@ -71,19 +71,24 @@ def generate_launch_description():
 
     # _desired_flowrate = 100 * (desired_rpm - 3400) / 7600
 
+    rws_launch_file = os.path.join(
+        get_package_share_directory('rws_motion_client'),
+        'launch',
+        'rws.launch.py'
+    )
 
-    
-    time_before_extend = 3.
-    data_collector = Node(
-        package=pkg,
-        executable="data_collector",
-        parameters=[{
-             'timeout_time':            float(((pass_length*1000 * max(pass_count_settings))/min(feed_rate_settings) + time_before_extend) * 1.5),    # Duration before timeout of a single test
-             'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
-             'grinder_enabled':         False,   # Enable/Disable the grinder with True/False
-             'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
-            }
-        ]
+    rws_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(rws_launch_file)        
+    )
+
+    motion_client = Node(
+        package="rws_motion_client",
+        executable="motion_client"
+    )
+
+    grinder_node = Node(
+        package="data_gathering",
+        executable="grinder_node",
     )
 
     test_coordinator = Node(
@@ -118,8 +123,7 @@ def generate_launch_description():
             }
         ]
     )
-
-    
+ 
     acf_node = Node(
         package='ferrobotics_acf',
         executable='acf.py',
@@ -165,9 +169,11 @@ def generate_launch_description():
         raise ValueError(f"Sample {sample} already exists in directory {bag_directory}\ndon't forget to change the sample number")
         
     
-    ld.add_action(data_collector)
+    ld.add_action(rws_launch)
+    ld.add_action(motion_client)
     ld.add_action(acf_node)
+    ld.add_action(grinder_node)
     ld.add_action(test_coordinator)
-    #ld.add_action(scanner_launch)
+    ld.add_action(scanner_launch)
     ld.add_action(volume_calculator)
     return ld

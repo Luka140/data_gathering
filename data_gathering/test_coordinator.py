@@ -108,9 +108,8 @@ class TestCoordinator(Node):
         self.test_index = 0         # Index of the current test in the settings list 
         self.sub_test_index = 0     # Number of times a certain test has been repeated
 
-        self.belt_prime_settings = self.create_setting_list_prime([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
-                
-        self.test_client            = self.create_client(StartGrindTest, "data_collector/execute_test")
+        # self.belt_prime_settings = self.create_setting_list_prime([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
+                # TODO remove priming
 
         # Empty subscriptions for user input to trigger certain actions 
         self.user_stop_testing      = self.create_subscription(Empty, "user/stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
@@ -120,8 +119,9 @@ class TestCoordinator(Node):
         self.failure_publisher      = self.create_publisher(String, '~/test_failure', 1)                  # Publish failure message for logging 
         self.belt_wear_publisher    = self.create_publisher(BeltWearHistory, '~/belt_wear_history', 1)    # Publish belt wear for logging 
         self.grind_area_publisher   = self.create_publisher(GrindArea, "~/grind_area", 1)                 # Publish belt width and plate thickness for logging 
-        self.publisher_volume       = self.create_publisher(Float32Stamped, '~/volume', 1)       # Publish removed volume 
+        self.publisher_volume       = self.create_publisher(Float32Stamped, '~/volume', 1)                # Publish removed volume 
 
+        self.test_client             = self.create_client(StartGrindTest, "/rws_motion_client/start_grind_move")
         self.scan_surface_trigger     = self.create_client(RequestPCL, 'execute_loop')                      # Request a scan of the test object
         self.calculate_volume_trigger = self.create_client(RequestPCLVolumeDiff, 'calculate_volume_lost')   # Request calculation of the removed volume 
 
@@ -227,6 +227,7 @@ class TestCoordinator(Node):
 
     def call_test(self):
         # Perform grind 
+        self.get_logger().info(f"Calling test {self.test_index + 1}")
         request = self.settings[self.test_index]
         call = self.test_client.call_async(request)
         call.add_done_callback(self.test_finished_callback)
