@@ -267,7 +267,8 @@ class TestCoordinator(Node):
         req.initial_pointcloud  = self.initial_scan
         req.final_pointcloud    = self.final_scan
         req.plate_thickness     = self.plate_thickness
-        req.belt_width          = self.belt_width                           #TODO change to pass length?
+        req.belt_width          = self.belt_width
+        req.pass_length          = self.pass_length
         path = self.write_pcl_pair(self.initial_scan, self.final_scan)
 
         volume_call = self.calculate_volume_trigger.call_async(req)
