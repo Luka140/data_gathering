@@ -108,9 +108,7 @@ def generate_launch_description():
              "repeat_test_count":       repeat_test_count,          # Repeat every test x times before scanning to make the volume loss more detectable
              "recorded_topics": ['/data_collector/rpm',
                                  '/acf/force',
-                                 '/test_coordinator/feed_rate',
-                                 '/test_coordinator/num_pass',
-                                 '/test_coordinator/pass_length',
+                                 '/rws_motion_client/grind_settings',
                                  '/acf/telem',
                                  '/data_collector/timesync',
                                  '/test_coordinator/volume',
