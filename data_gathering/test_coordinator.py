@@ -68,7 +68,7 @@ class TestCoordinator(Node):
         self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value
 
         #calculated contact time, should be used for wear calculation
-        self.contact_time_settings = self.pass_length * (np.array(self.pass_count_settings) / np.array(self.feed_rate_settings))
+        self.contact_time_settings = (self.pass_length*1000) * (np.array(self.pass_count_settings) / np.array(self.feed_rate_settings))
         self.contact_time_settings = self.contact_time_settings.tolist()
 
         belt_prime_force    = self.get_parameter("belt_prime_force").value

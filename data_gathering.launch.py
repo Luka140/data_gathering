@@ -22,7 +22,7 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "dual_robot_rpm_investigation_quad_plate_2"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
+    sample      = "moving_robot_feed_rate_investigation_2"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
     plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
