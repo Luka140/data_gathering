@@ -78,7 +78,7 @@ def generate_launch_description():
         package=pkg,
         executable="data_collector",
         parameters=[{
-             'timeout_time':            float(((pass_length * max(pass_count_settings))/min(feed_rate_settings) + time_before_extend) * 1.5),    # Duration before timeout of a single test
+             'timeout_time':            float(((pass_length*1000 * max(pass_count_settings))/min(feed_rate_settings) + time_before_extend) * 1.5),    # Duration before timeout of a single test
              'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
              'grinder_enabled':         False,   # Enable/Disable the grinder with True/False
              'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
