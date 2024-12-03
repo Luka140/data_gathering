@@ -9,7 +9,7 @@ from std_msgs.msg import Header
 from stamped_std_msgs.msg import Float32Stamped, Int32Stamped, TimeSync
 from ferrobotics_acf.msg import ACFTelemStamped
 
-from data_gathering_msgs.srv import TestRequest
+from data_gathering_msgs.srv import StartGrindTest
 
 import pyads
 import ctypes
@@ -32,10 +32,10 @@ class DataCollector(Node):
 
         # Without a mutually exclusive group, this callback may lead to multiple test_done timers being created unintentionally
         self.telem_listener      = self.create_subscription(ACFTelemStamped, '/acf/telem', self.telem_callback, 5, callback_group=MutuallyExclusiveCallbackGroup())
-        self.test_server         = self.create_service(TestRequest, '~/execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
+        self.test_server         = self.create_service(StartGrindTest, '~/execute_test', self.start_test, callback_group=MutuallyExclusiveCallbackGroup())
 
         # Initialize flags 
-        self.test_done = False                  # Indicates when TestRequest response is finished. Set in shutdown_sequence
+        self.test_done = False                  # Indicates when StartGrindTest response is finished. Set in shutdown_sequence
         self.test_success = None                # Indicates whether the test was successful
         self.failure_message = ''               # Stores potential failure messages
         self.initial_contact_time = None        # Stores the time at which the grinder initially made contact with the part

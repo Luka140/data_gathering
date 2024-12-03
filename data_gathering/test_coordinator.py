@@ -31,12 +31,12 @@ class TestCoordinator(Node):
         self.declare_parameter("rpm_settings",          [], ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("feed_rate_settings",    [], ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("pass_count_settings",   [], ParameterDescriptor(dynamic_typing=True))
-        self.declare_parameter("pass_length_settings",  [], ParameterDescriptor(dynamic_typing=True))
 
         self.declare_parameter("grit", 120)
         self.declare_parameter("sample", "")
         self.declare_parameter("plate_thickness", 0.)
         self.declare_parameter("belt_width", 0.)
+        self.declare_parameter("pass_length", 0.)
         self.declare_parameter("movement_length", 0.)
         self.declare_parameter("feed_rate_threshold", 10)
 
@@ -59,17 +59,17 @@ class TestCoordinator(Node):
         self.rpm_settings           = self.get_parameter("rpm_settings").value
         self.feed_rate_settings     = self.get_parameter("feed_rate_settings").value
         self.pass_count_settings    = self.get_parameter("pass_count_settings").value
-        self.pass_length_settings   = self.get_parameter("pass_length_settings").value
         self.grit                   = self.get_parameter("grit").value
         self.sample_id              = self.get_parameter("sample").value
         self.plate_thickness        = self.get_parameter("plate_thickness").value 
         self.belt_width             = self.get_parameter("belt_width").value 
+        self.pass_length            = self.get_parameter("pass_length").value       
         self.movement_length        = self.get_parameter("movement_length").value 
         self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value
 
-        #TODO settings is a list of settings must change rosbag suffix part into test_setting.feed_rate
         #calculated contact time, should be used for wear calculation
-        self.contact_time_settings = self.pass_length_settings * self.pass_count_settings / self.feed_rate_settings
+        self.contact_time_settings = self.pass_length * (np.array(self.pass_count_settings) / np.array(self.feed_rate_settings))
+        self.contact_time_settings = self.contact_time_settings.tolist()
 
         belt_prime_force    = self.get_parameter("belt_prime_force").value
         belt_prime_rpm      = self.get_parameter("belt_prime_rpm").value
@@ -104,13 +104,13 @@ class TestCoordinator(Node):
                 os.mkdir(directory)
 
         self.test_setting_validity()
-        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.feed_rates_settings, self.pass_count_settings, self.pass_length_settings,self.contact_time_settings)
+        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.feed_rate_settings, self.pass_count_settings,self.contact_time_settings)
         self.test_index = 0         # Index of the current test in the settings list 
         self.sub_test_index = 0     # Number of times a certain test has been repeated
 
-        self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
+        self.belt_prime_settings = self.create_setting_list_prime([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
                 
-        self.test_client            = self.create_client(TestRequest, "data_collector/execute_test")
+        self.test_client            = self.create_client(StartGrindTest, "data_collector/execute_test")
 
         # Empty subscriptions for user input to trigger certain actions 
         self.user_stop_testing      = self.create_subscription(Empty, "user/stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
@@ -267,7 +267,7 @@ class TestCoordinator(Node):
         req.initial_pointcloud  = self.initial_scan
         req.final_pointcloud    = self.final_scan
         req.plate_thickness     = self.plate_thickness
-        req.belt_width          = self.belt_width
+        req.belt_width          = self.belt_width                           #TODO change to pass length?
         path = self.write_pcl_pair(self.initial_scan, self.final_scan)
 
         volume_call = self.calculate_volume_trigger.call_async(req)
@@ -401,21 +401,30 @@ class TestCoordinator(Node):
     # Methods related to setting the test parameters
     ############################################################################################################################################
 
-    def create_setting_list(self, forces, rpms, feed_rates, num_pass, pass_lengths, contact_times):
+    def create_setting_list(self, forces, rpms, feed_rates, num_pass, contact_times):
         settings = []
-        for i in range(max(len(forces), len(rpms), len(feed_rates), len(num_pass), len(pass_lengths),len(contact_times))):
+        for i in range(max(len(forces), len(rpms), len(feed_rates), len(num_pass),len(contact_times))):
             request                 = StartGrindTest.Request()
             request.force           = float(forces[i%len(forces)])
             request.rpm             = float(rpms[i%len(rpms)])
             request.passes          = int(num_pass[i%len(num_pass)])
             request.tcp_speed       = float(feed_rates[i%len(feed_rates)])
-            request.pass_length     = float(pass_lengths[i%len(pass_lengths)])
+            request.contact_time    = float(contact_times[i%len(contact_times)])
+            settings.append(request)
+        return settings
+    
+    def create_setting_list_prime(self, forces, rpms, contact_times):
+        settings = []
+        for i in range(max(len(forces), len(rpms), len(contact_times))):
+            request                 = StartGrindTest.Request()
+            request.force           = float(forces[i%len(forces)])
+            request.rpm             = float(rpms[i%len(rpms)])
             request.contact_time    = float(contact_times[i%len(contact_times)])
             settings.append(request)
         return settings 
 
     def test_setting_validity(self):
-        if len(self.force_settings) == 0 or len(self.rpm_settings) == 0 or len(self.pass_count_settings) or len(self.feed_rate_settings) == 0:
+        if len(self.force_settings) == 0 or len(self.rpm_settings) == 0 or len(self.pass_count_settings) == 0 or len(self.feed_rate_settings) == 0:
             raise ValueError("A value must be specified for 'force_settings', 'rpm_settings', 'pass_count_settings' and 'feed_rate_settings'")
 
         _unique_settings = set([len(self.force_settings), len(self.rpm_settings), len(self.contact_time_settings)])
@@ -437,7 +446,7 @@ class TestCoordinator(Node):
 
     def generate_rosbag_suffix(self):
         test_settings = self.settings[self.test_index]
-        return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_fr{test_settings.tcp_speed}_np{test_settings.passes}_pl{test_settings.pass_length}_ct{test_settings.contact_time}'
+        return f'_sample{self.sample_id}__f{test_settings.force}_rpm{test_settings.rpm}_grit{self.grit}_fr{test_settings.tcp_speed}_np{test_settings.passes}_pl{self.pass_length}_ct{test_settings.contact_time}'
 
     def convert_ros_to_open3d(self, pcl_msg):
         # Extract the point cloud data from the ROS2 message

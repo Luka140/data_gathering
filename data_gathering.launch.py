@@ -28,11 +28,13 @@ def generate_launch_description():
 
     grit        = 120
     belt_width  = 25. / 1000    
+    pass_length = 75. / 1000
 
     # Main test settings 
     force_settings = [7, 8, 9] 
     rpm_settings = [11000]
-    contact_times = [10]
+    feed_rate_settings = [10]
+    pass_count_settings = [4]
     repeat_test_count = 1      # Repeat a grind x times, and only scan afterwards. Then lost vol = lost vol / x. Detects lower volume. Set to 1 to scan after every grind 
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
@@ -64,25 +66,25 @@ def generate_launch_description():
     belt_prime_time     = 15
 
     if all_setting_permutations:
-        _settings_array = np.array(list(product(force_settings, rpm_settings, contact_times)))
-        force_settings, rpm_settings, contact_times = [[float(val) for val in ar.flatten()] for ar in np.hsplit(_settings_array, 3)]
+        _settings_array = np.array(list(product(force_settings, rpm_settings, feed_rate_settings, pass_count_settings)))
+        force_settings, rpm_settings, feed_rate_settings, pass_count_settings = [[float(val) for val in ar.flatten()] for ar in np.hsplit(_settings_array, 4)]
 
     # _desired_flowrate = 100 * (desired_rpm - 3400) / 7600
 
 
     
-    # time_before_extend = 3.
-    # data_collector = Node(
-    #     package=pkg,
-    #     executable="data_collector",
-    #     parameters=[{
-    #          'timeout_time':            float((max(contact_times) + time_before_extend) * 1.5),    # Duration before timeout of a single test
-    #          'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
-    #          'grinder_enabled':         True,   # Enable/Disable the grinder with True/False
-    #          'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
-    #         }
-    #     ]
-    # )
+    time_before_extend = 3.
+    data_collector = Node(
+        package=pkg,
+        executable="data_collector",
+        parameters=[{
+             'timeout_time':            float(((pass_length * max(pass_count_settings))/min(feed_rate_settings) + time_before_extend) * 1.5),    # Duration before timeout of a single test
+             'time_before_extend':      time_before_extend,     # Duration between initial spin up of grinder and ACF extension
+             'grinder_enabled':         False,   # Enable/Disable the grinder with True/False
+             'max_acf_extension':       35.5    # Extension of the acf before hitting its endstop in mm 
+            }
+        ]
+    )
 
     test_coordinator = Node(
         package=pkg,
@@ -90,12 +92,14 @@ def generate_launch_description():
         parameters=[
             {'force_settings':          force_settings[start_idx:],    # Force of the ACF (N)     
              'rpm_settings':            rpm_settings[start_idx:],      # RPM of the grinder
-             'contact_time_settings':   contact_times[start_idx:],     # Duration to grind (s)
+             'feed_rate_settings':      feed_rate_settings[start_idx:],     # grinder feed rate (mm/s)
+             'pass_count_settings':     pass_count_settings[start_idx:],    # number of passes
              'grit':                    grit,               # Grit of the belt (only for logging purposes)
              'sample':                  sample,             # Sample number (only for logging purposes)
              'wear_threshold':          wear_threshold,     # Threshold of the belt wear metric before requiring a change
              'plate_thickness':         plate_thickness,    # The thickness of the tested plate (m)
              'belt_width':              belt_width,         # The width of the belt (m)
+             'pass_length':             pass_length,        # feed length of each pass
              'wear_tracking_path':      belt_wear_path,             # Path to wear tracking file
              "belt_prime_force":        belt_prime_force,           # Force to use for priming the belt
              "belt_prime_rpm":          belt_prime_rpm,             # RPM to use for priming the belt
@@ -104,6 +108,9 @@ def generate_launch_description():
              "repeat_test_count":       repeat_test_count,          # Repeat every test x times before scanning to make the volume loss more detectable
              "recorded_topics": ['/data_collector/rpm',
                                  '/acf/force',
+                                 '/test_coordinator/feed_rate',
+                                 '/test_coordinator/num_pass',
+                                 '/test_coordinator/pass_length',
                                  '/acf/telem',
                                  '/data_collector/timesync',
                                  '/test_coordinator/volume',
@@ -163,6 +170,6 @@ def generate_launch_description():
     ld.add_action(data_collector)
     ld.add_action(acf_node)
     ld.add_action(test_coordinator)
-    ld.add_action(scanner_launch)
+    #ld.add_action(scanner_launch)
     ld.add_action(volume_calculator)
     return ld
