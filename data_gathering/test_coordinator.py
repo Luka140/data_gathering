@@ -38,11 +38,12 @@ class TestCoordinator(Node):
         self.declare_parameter("belt_width", 0.)
         self.declare_parameter("pass_length", 0.)
         self.declare_parameter("movement_length", 0.)
-        self.declare_parameter("feed_rate_threshold", 10)
+        self.declare_parameter("feed_rate_threshold", 10.)
 
-        self.declare_parameter("belt_prime_force",  3,      ParameterDescriptor(dynamic_typing=True))
-        self.declare_parameter("belt_prime_rpm",    9000,   ParameterDescriptor(dynamic_typing=True))
-        self.declare_parameter("belt_prime_time",   5,      ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_force", 3,       ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_rpm", 9000,      ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_feedrate", 10,   ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_passes", 2,      ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("initial_prime", False)
 
         self.declare_parameter("repeat_test_count", 1)
@@ -68,13 +69,16 @@ class TestCoordinator(Node):
         self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value
 
         #calculated contact time, should be used for wear calculation
-        self.contact_time_settings = (self.pass_length*1000) * (np.array(self.pass_count_settings) / np.array(self.feed_rate_settings))
-        self.contact_time_settings = self.contact_time_settings.tolist()
+        self.total_contact_time_settings = (self.pass_length*1000) * (np.array(self.pass_count_settings) / np.array(self.feed_rate_settings))
+        self.total_contact_time_settings = self.total_contact_time_settings.tolist()
+        
 
         belt_prime_force    = self.get_parameter("belt_prime_force").value
         belt_prime_rpm      = self.get_parameter("belt_prime_rpm").value
-        belt_prime_time     = self.get_parameter("belt_prime_time").value
+        belt_prime_feedrate = self.get_parameter("belt_prime_feedrate").value
+        belt_prime_passes   = self.get_parameter("belt_prime_passes").value
         initial_prime_belt  = self.get_parameter("initial_prime").value 
+        belt_prime_total_contact_time = self.pass_length * 1000 * belt_prime_passes / belt_prime_feedrate
 
         # Repeat a test a number of times, and only afterwards scan again. Then divide volume loss by nr. of tests
         # Allows to detect smaller volume loss numbers reliably 
@@ -104,11 +108,11 @@ class TestCoordinator(Node):
                 os.mkdir(directory)
 
         self.test_setting_validity()
-        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.feed_rate_settings, self.pass_count_settings,self.contact_time_settings)
+        self.settings = self.create_setting_list(self.force_settings, self.rpm_settings, self.feed_rate_settings, self.pass_count_settings,self.total_contact_time_settings)
         self.test_index = 0         # Index of the current test in the settings list 
         self.sub_test_index = 0     # Number of times a certain test has been repeated
 
-        # self.belt_prime_settings = self.create_setting_list_prime([belt_prime_force], [belt_prime_rpm], [belt_prime_time])[0]
+        self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_feedrate], [belt_prime_passes], [belt_prime_total_contact_time])[0]
                 # TODO remove priming
 
         # Empty subscriptions for user input to trigger certain actions 
@@ -186,7 +190,7 @@ class TestCoordinator(Node):
             self.get_logger().error(f"\n\n\nThe belt prime seems to have failed due to:\n{result.message}\n\n")
             self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
         
-        self.update_wear_history(result.force, result.rpm, result.contact_time, self.belt_width * self.plate_thickness)
+        self.update_wear_history(result.grind_settings.force, result.grind_settings.rpm, result.grind_settings.contact_time, self.belt_width * self.plate_thickness)
 
         self.rosbag.stop_recording()
         self.ask_next_test()       
@@ -233,13 +237,15 @@ class TestCoordinator(Node):
         call.add_done_callback(self.test_finished_callback)
 
     def test_finished_callback(self, future):
+        self.get_logger().info("Test done")
         result = future.result()
         success = result.success
+
 
         # Update how many times the current test has been ran
         self.sub_test_index += 1 
         
-        self.update_wear_history(result.force, result.rpm, result.contact_time, self.plate_thickness * self.belt_width)
+        self.update_wear_history(result.grind_settings.force, result.grind_settings.rpm, result.grind_settings.contact_time, self.belt_width * self.plate_thickness)
 
         if not success:
             self.get_logger().error(f"\n\nThe test seems to have failed due to:\n{result.message}\n")
@@ -403,38 +409,38 @@ class TestCoordinator(Node):
     # Methods related to setting the test parameters
     ############################################################################################################################################
 
-    def create_setting_list(self, forces, rpms, feed_rates, num_pass, contact_times):
+    def create_setting_list(self, forces, rpms, feed_rates, num_pass, total_contact_times):
         settings = []
-        for i in range(max(len(forces), len(rpms), len(feed_rates), len(num_pass),len(contact_times))):
+        for i in range(max(len(forces), len(rpms), len(feed_rates), len(num_pass),len(total_contact_times))):
             request                 = StartGrindTest.Request()
             request.force           = float(forces[i%len(forces)])
             request.rpm             = float(rpms[i%len(rpms)])
             request.passes          = int(num_pass[i%len(num_pass)])
             request.tcp_speed       = float(feed_rates[i%len(feed_rates)])
-            request.contact_time    = float(contact_times[i%len(contact_times)])
+            request.contact_time    = float(total_contact_times[i%len(total_contact_times)])
             settings.append(request)
         return settings
     
-    def create_setting_list_prime(self, forces, rpms, contact_times):
-        settings = []
-        for i in range(max(len(forces), len(rpms), len(contact_times))):
-            request                 = StartGrindTest.Request()
-            request.force           = float(forces[i%len(forces)])
-            request.rpm             = float(rpms[i%len(rpms)])
-            request.contact_time    = float(contact_times[i%len(contact_times)])
-            settings.append(request)
-        return settings 
+    # def create_setting_list_prime(self, forces, rpms, contact_times):
+    #     settings = []
+    #     for i in range(max(len(forces), len(rpms), len(contact_times))):
+    #         request                 = StartGrindTest.Request()
+    #         request.force           = float(forces[i%len(forces)])
+    #         request.rpm             = float(rpms[i%len(rpms)])
+    #         request.contact_time    = float(contact_times[i%len(contact_times)])
+    #         settings.append(request)
+    #     return settings 
 
     def test_setting_validity(self):
         if len(self.force_settings) == 0 or len(self.rpm_settings) == 0 or len(self.pass_count_settings) == 0 or len(self.feed_rate_settings) == 0:
             raise ValueError("A value must be specified for 'force_settings', 'rpm_settings', 'pass_count_settings' and 'feed_rate_settings'")
 
-        _unique_settings = set([len(self.force_settings), len(self.rpm_settings), len(self.contact_time_settings)])
+        _unique_settings = set([len(self.force_settings), len(self.rpm_settings), len(self.total_contact_time_settings)])
         _unique_settings.discard(1)
         if len(_unique_settings) > 2:
             raise ValueError("All setting lists must be either the same length, or length 1 to keep the setting constant")
 
-        negatives = [setting for setting in [*self.force_settings, *self.rpm_settings, *self.contact_time_settings] if setting < 0]
+        negatives = [setting for setting in [*self.force_settings, *self.rpm_settings, *self.total_contact_time_settings] if setting < 0]
         if len(negatives) > 0:
             raise ValueError("Force, RPM and contact time should be positive")
         

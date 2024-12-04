@@ -13,7 +13,7 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-
+from launch.actions import TimerAction
 
 def generate_launch_description():
     pkg = "data_gathering"
@@ -22,19 +22,19 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "TEST"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
+    sample      = "moving_grind_first_testset"   
     plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
-
+    # TODO parameterize ABB code and set feedrate cap there too....
     grit        = 120
     belt_width  = 25. / 1000    
-    pass_length = 75. / 1000
+    pass_length = 50. / 1000
 
     # Main test settings 
-    force_settings = [7, 8, 9] 
+    force_settings = [5, 7] 
     rpm_settings = [11000]
     feed_rate_settings = [10]
-    pass_count_settings = [4]
+    pass_count_settings = [4, 6, 8]
     repeat_test_count = 1      # Repeat a grind x times, and only scan afterwards. Then lost vol = lost vol / x. Detects lower volume. Set to 1 to scan after every grind 
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
@@ -45,14 +45,14 @@ def generate_launch_description():
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
-    initially_prime_new_belt = False    
+    initially_prime_new_belt = True    
 
     # Belt wear tracking file path  
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_10_grit_120.csv"
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_11_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
-    wear_threshold = 10e7    # TODO CHANGE BACK!!!!!!!
+    wear_threshold = 5e7   
 
     ##############################################################################################################################
 
@@ -63,7 +63,8 @@ def generate_launch_description():
     # It is also recommended to start a groove when a plate is switched, as behaviour on a flat surface and inside a groove seems to differ
     belt_prime_force    = 7
     belt_prime_rpm      = 11000
-    belt_prime_time     = 15
+    belt_prime_feedrate = 10
+    belt_prime_passes = 2
 
     if all_setting_permutations:
         _settings_array = np.array(list(product(force_settings, rpm_settings, feed_rate_settings, pass_count_settings)))
@@ -108,14 +109,16 @@ def generate_launch_description():
              'wear_tracking_path':      belt_wear_path,             # Path to wear tracking file
              "belt_prime_force":        belt_prime_force,           # Force to use for priming the belt
              "belt_prime_rpm":          belt_prime_rpm,             # RPM to use for priming the belt
-             "belt_prime_time":         belt_prime_time,            # Duration to prime the belt 
+             "belt_prime_feedrate":     belt_prime_feedrate,        # Feedrate for belt priming
+             "belt_prime_passes":       belt_prime_passes,          # Number of passes for belt priming
              "initial_prime":           initially_prime_new_belt,   # Prime the belt before any test is run. 
              "repeat_test_count":       repeat_test_count,          # Repeat every test x times before scanning to make the volume loss more detectable
-             "recorded_topics": ['/data_collector/rpm',
+             "feed_rate_threshold":     35.,                        # A maximum feedrate cap for safety
+             "recorded_topics": ['/grinder_node/rpm',
+                                 '/grinder_node/timesync',
                                  '/acf/force',
                                  '/rws_motion_client/grind_settings',
                                  '/acf/telem',
-                                 '/data_collector/timesync',
                                  '/test_coordinator/volume',
                                  '/test_coordinator/belt_wear_history',
                                  '/test_coordinator/test_failure',
@@ -146,7 +149,7 @@ def generate_launch_description():
     scanner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(surface_scanner),
         launch_arguments={
-            'path_config': 'trajectory_abb_grind.yaml',
+            'path_config': 'trajectory_moving_grinder_dual_robot.yaml',
             # 'path_config': 'trajectory_corner_grind.yaml',
             'autonomous_execution': 'false',  
             'loop_on_service': 'true',        
@@ -156,6 +159,8 @@ def generate_launch_description():
             'local_bbox_max': str(local_bbox_max)                   
         }.items()
     )
+
+    
 
     volume_calculator = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
