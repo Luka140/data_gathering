@@ -37,7 +37,6 @@ class TestCoordinator(Node):
         self.declare_parameter("plate_thickness", 0.)
         self.declare_parameter("belt_width", 0.)
         self.declare_parameter("pass_length", 0.)
-        self.declare_parameter("movement_length", 0.)
         self.declare_parameter("feed_rate_threshold", 10.)
 
         self.declare_parameter("belt_prime_force", 3,       ParameterDescriptor(dynamic_typing=True))
@@ -65,7 +64,6 @@ class TestCoordinator(Node):
         self.plate_thickness        = self.get_parameter("plate_thickness").value 
         self.belt_width             = self.get_parameter("belt_width").value 
         self.pass_length            = self.get_parameter("pass_length").value       
-        self.movement_length        = self.get_parameter("movement_length").value 
         self.feed_rate_threshold    = self.get_parameter("feed_rate_threshold").value
 
         #calculated contact time, should be used for wear calculation
@@ -113,17 +111,18 @@ class TestCoordinator(Node):
         self.sub_test_index = 0     # Number of times a certain test has been repeated
 
         self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_feedrate], [belt_prime_passes], [belt_prime_total_contact_time])[0]
-                # TODO remove priming
 
         # Empty subscriptions for user input to trigger certain actions 
         self.user_stop_testing      = self.create_subscription(Empty, "user/stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
         self.user_continue_testing  = self.create_subscription(Empty, "user/continue_testing", self.usr_continue_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
         self.user_changed_belt      = self.create_subscription(Empty, "user/changed_belt", self.usr_changed_belt, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        self.user_ignore_error      = self.create_subscription(Empty, "user/ignore_error", self.usr_ignore_error, 1, callback_group=MutuallyExclusiveCallbackGroup())
 
         self.failure_publisher      = self.create_publisher(String, '~/test_failure', 1)                  # Publish failure message for logging 
         self.belt_wear_publisher    = self.create_publisher(BeltWearHistory, '~/belt_wear_history', 1)    # Publish belt wear for logging 
         self.grind_area_publisher   = self.create_publisher(GrindArea, "~/grind_area", 1)                 # Publish belt width and plate thickness for logging 
-        self.publisher_volume       = self.create_publisher(Float32Stamped, '~/volume', 1)                # Publish removed volume 
+        self.publisher_volume       = self.create_publisher(Float32Stamped, '~/volume', 1)                # Publish removed volume from the middle beltwidth sized section.
+        self.publisher_full_volume  = self.create_publisher(Float32Stamped, '~/full_volume', 1)           # Publish all removed volume 
 
         self.test_client             = self.create_client(StartGrindTest, "/rws_motion_client/start_grind_move")
         self.scan_surface_trigger     = self.create_client(RequestPCL, 'execute_loop')                      # Request a scan of the test object
@@ -132,6 +131,8 @@ class TestCoordinator(Node):
         self.ready_for_next = True  # Flag to see whether a test is in progress right now or the next test can be started on user input
         self.primed_belt = False    # Flag to indicate that a new belt was just primed, so a new 'before' scan should be made 
         self.belt_worn = False      # Flag to indicate that the belt should be changed - unlocks the self.usr_changed_belt callback
+        self.encountered_error = False 
+        self.error_sleep_rate = self.create_rate(1)
 
         current_wear = self.read_initial_wear()
         if current_wear > self.belt_threshold:
@@ -250,9 +251,14 @@ class TestCoordinator(Node):
         if not success:
             self.get_logger().error(f"\n\nThe test seems to have failed due to:\n{result.message}\n")
             self.failure_publisher.publish(String(data=result.message))  # Leave a message so the recording is marked as a failed test
+            self.encountered_error = True 
+            
+            while self.encountered_error:
+                self.error_sleep_rate.sleep()
+
+            self.get_logger().info("Ignoring error. Moving on to after-test scan...")
 
         if self.sub_test_index < self.repeat_test_count:
-            ... # TODO bypass second scan but still do all the cleanup stuff like stopping the recording ...
             self.rosbag.stop_recording()
             self.ask_next_test()
         
@@ -286,10 +292,15 @@ class TestCoordinator(Node):
         success = result.success
 
         # Convert volume to cubic mm and divide by the number of subtests that were performed without scanning
-        vol_per_grind = float(result.volume_difference) * 1000**3 / self.repeat_test_count
+        vol_per_grind = float(result.volume_difference_mid) * 1000**3 / self.repeat_test_count
         volume_msg = Float32Stamped(data= vol_per_grind, header=Header(stamp=self.get_clock().now().to_msg()))
         self.get_logger().info(f"Removed volume per grind: {vol_per_grind} mm3")
         self.publisher_volume.publish(volume_msg)
+
+        # Also publish the message with the full removed volume of the pass, not just the middle 25mm wide bit. 
+        full_vol_per_grind = float(result.volume_difference) * 1000**3 / self.repeat_test_count
+        full_volume_msg = Float32Stamped(data= full_vol_per_grind, header=Header(stamp=self.get_clock().now().to_msg()))
+        self.publisher_full_volume.publish(full_volume_msg)
 
         if not success:
             self.get_logger().error(f"\n\nThe volume calculation seems to have failed due to:\n{result.message}\n")
@@ -343,6 +354,9 @@ class TestCoordinator(Node):
             self.get_logger().info(f"Next test starting in {self.startup_delay} seconds.")
         else:
             self.get_logger().info("Not ready for the next test yet.")     
+
+    def usr_ignore_error(self, _):
+        self.encountered_error = False 
 
     ############################################################################################################################################
     # Methods related to tracking the belt wear 
