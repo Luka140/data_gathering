@@ -1,5 +1,5 @@
-# Grinding model data gatherer
-
+# Grinding model data gatherer -- Moving grinder
+# TODO CHANGES IN MOVING GRINDER VER
 ## Overview
 Code to perform automated testing of material removal using a pneumatic grinder. 
 It uses a laser line scanner on a UR16 to create a scan of the test plate. The grinder is then engaged and grinds away material for a set force, rpm, and duration. A second scan is then performed to measure the amount of material removed. The test data is recorded using rosbags.
