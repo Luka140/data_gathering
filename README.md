@@ -11,13 +11,13 @@ The recorded rosbags can be processed into .csv files for modelling using the [b
 #### Dependencies (INCOMPLETE)
 - ROS2 Humble
 - Universal Robots ROS2 Driver
-- pyads
+- pyads (Python wrapper for TwinCAT ADS library)
 - open3d
 
 
 
 ```bash
-pip install pyads
+pip install pyads==3.4.2
 pip install open3d==0.18.0
 pip install numpy==1.24.0
 
