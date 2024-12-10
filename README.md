@@ -43,6 +43,14 @@ pip install pyransac3d==0.6.0
 ```
 
 
+## Launch
+To launch use 
+```bash
+ros2 launch data_gathering data_gathering.launch.py
+```
+This launch file is used to set all the test settings. 
+
+
 ## Nodes
 ### data_collector
 A node that connects to the PLC with grinder, and sends commands to the ACF node. It performs a grind for a requested force, RPM, and contact duration.
