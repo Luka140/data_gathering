@@ -6,10 +6,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from std_msgs.msg import Header 
-from stamped_std_msgs.msg import Float32Stamped, Int32Stamped, TimeSync
-from ferrobotics_acf.msg import ACFTelemStamped
-
-from std_srvs.srv import Trigger
+from stamped_std_msgs.msg import Int32Stamped, TimeSync
 from data_gathering_msgs.srv import StartGrinder, StopGrinder
 
 import pyads
