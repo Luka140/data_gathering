@@ -1,41 +1,28 @@
 # Grinding model data gatherer
-
+This branch contains code to perform tests on a stationary grinder. For the version with the robot-arm mounted grinder, see the `moving_grinder` branch.
 ## Overview
 Code to perform automated testing of material removal using a pneumatic grinder. 
 It uses a laser line scanner on a UR16 to create a scan of the test plate. The grinder is then engaged and grinds away material for a set force, rpm, and duration. A second scan is then performed to measure the amount of material removed. The test data is recorded using rosbags.
 
 The recorded rosbags can be processed into .csv files for modelling using the [bag_converter](https://github.com/Luka140/bag_converter) package. 
 
-## Installation
-
-#### Dependencies (INCOMPLETE)
-- ROS2 Humble
-- Universal Robots ROS2 Driver
-- pyads (Python wrapper for TwinCAT ADS library)
-- open3d
-
-
-
-```bash
-pip install pyads==3.4.2
-pip install open3d==0.18.0
-pip install numpy==1.24.0
-
-sudo apt-get update
-sudo apt install ros-humble-rosbag2-storage-mcap
-```
-
-#### Building
-To build from source, clone the latest version from this repository into your workspace along with the following repositories
-
-- `ferrobotics_acf`: Controls the ACF
-- `stamped_std_msgs`: Stamped standard messages for data storage
-- `data_gatherin_msgs`: Additional msgs
-- `ur_trajectory_controller`: Controls the UR16
-- `scancontrol`: ROS Driver for Scancontrol laser line scanners
-- `lls_processing`: Compiles 3D pointcloud reconstructions based on TF transfers
-- `pcl_processing_ros2`: Used to calculate volume loss between two scans
-- `Universal_Robots_ROS2_Driver`: Driver for the UR16
+## Installation and dependencies
+Clone this repository. 
+The following are the dependencies: 
+- [`ferrobotics_acf`](https://github.com/Luka140/ferrobotics_acf/tree/humble): Controls the ACF
+- [`stamped_std_msgs`](https://github.com/Luka140/stamped_std_msgs/tree/main): Stamped standard messages for data storage
+- [`data_gatherin_msgs`](https://github.com/Luka140/data_gathering_msgs): Additional msgs
+- [`ur_trajectory_controller`](https://github.com/Luka140/ur_trajectory_controller): Controls the UR16e
+- [`scancontrol`](https://github.com/Luka140/scancontrol/tree/ros2-devel): ROS2 Driver for Scancontrol laser line scanners
+- [`lls_processing`](https://github.com/Luka140/lls_processing): Compiles 3D pointcloud reconstructions based on TF transfers
+- [`pcl_processing_ros2`](https://github.com/panin-anan/pcl_processing_ros2/tree/main): Used to calculate volume loss between two scans
+- [`Universal_Robots_ROS2_Driver`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Driver/tree/humble): Driver for the UR16e
+  
+- `ros-humble-rosbag2-storage-mcap`: Enabled MCAP storage format for rosbags
+- `open3d`: for pointcloud operations. Note that the used (and currently latest) version requires Numpy < 1.25. Used in `pcl_processing_ros2` and `lls_processing`.
+- [`pyads`](https://github.com/stlehmann/pyads): A Python wrapper for TwinCAT ADS library. Used in `data_gathering`
+- [`concave_hull`](https://github.com/panin-anan/concave_hull): A Python library to calculate concave hulls. Used in `pcl_processing_ros2`
+- [`pyransac3d`](https://github.com/leomariga/pyRANSAC-3D): A python library for the RANSAC algorithm. Used in`pcl_processing_ros2`
 
 ```bash
 git clone git@github.com:Luka140/data_gathering.git
@@ -43,16 +30,16 @@ git clone git@github.com:Luka140/ferrobotics_acf.git -b humble
 git clone git@github.com:Luka140/stamped_std_msgs.git
 git clone git@github.com:Luka140/data_gathering_msgs.git
 git clone git@github.com:Luka140/ur_trajectory_controller.git
-git clone git@github.com:Luka140/lls_processing.git
 git clone git@github.com:Luka140/scancontrol.git -b ros2-devel
+git clone git@github.com:Luka140/lls_processing.git
 git clone git@github.com:panin-ananwa/pcl_processing_ros2.git
 sudo apt-get install ros-humble-ur
-```
-and compile all of the packages:
-To build, after cloning all the packages:
-```bash
-colcon build --symlink-install
-install/setup.bash
+sudo apt-get install ros-humble-rosbag2-storage-mcap
+
+pip install pyads==3.4.2
+pip install open3d==0.18.0
+pip install numpy==1.24.0
+pip install pyransac3d==0.6.0
 ```
 
 
