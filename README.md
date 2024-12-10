@@ -9,59 +9,50 @@ The recorded rosbags can be processed into .csv files for modelling using the [b
 
 **Note that other packages this package depends on should also be set to the 'moving_grinder' branch if available.**
 
-## Installation
-
-#### Dependencies (INCOMPLETE)
-- ROS2 Humble
-- Universal Robots ROS2 Driver
-- pyads
-- open3d
-
-
-
-```bash
-pip install pyads
-pip install open3d==0.18.0
-pip install numpy==1.24.0
-
-sudo apt-get update
-sudo apt install ros-humble-rosbag2-storage-mcap
-```
-
-#### Building
-To build from source, clone the latest version from this repository into your workspace along with the following repositories
-
-- `ferrobotics_acf`: Controls the ACF
-- `stamped_std_msgs`: Stamped standard messages for data storage
-- `data_gatherin_msgs`: Additional msgs
-- `ur_trajectory_controller`: Controls the UR16
-- `scancontrol`: ROS Driver for Scancontrol laser line scanners
-- `lls_processing`: Compiles 3D pointcloud reconstructions based on TF transfers
-- `pcl_processing_ros2`: Used to calculate volume loss between two scans
-- `Universal_Robots_ROS2_Driver`: Driver for the UR16
+## Installation and dependencies
+Clone this repository. 
+The following are the dependencies: 
+- [`rws_motion_client`](https://github.com/Luka140/rws_motion_client): Interacts with the ABB robot, and coordinates its moves with the grinder and ACF.
+- [`ferrobotics_acf`](https://github.com/Luka140/ferrobotics_acf/tree/humble): Controls the ACF
+- [`stamped_std_msgs`](https://github.com/Luka140/stamped_std_msgs/tree/main): Stamped standard messages for data storage
+- [`data_gatherin_msgs`](https://github.com/Luka140/data_gathering_msgs/tree/moving_grinder): Additional msgs
+- [`ur_trajectory_controller`](https://github.com/Luka140/ur_trajectory_controller): Controls the UR16e
+- [`scancontrol`](https://github.com/Luka140/scancontrol/tree/ros2-devel): ROS2 Driver for Scancontrol laser line scanners
+- [`lls_processing`](https://github.com/Luka140/lls_processing): Compiles 3D pointcloud reconstructions based on TF transfers
+- [`pcl_processing_ros2`](https://github.com/panin-anan/pcl_processing_ros2/tree/moving_grinder): Used to calculate volume loss between two scans
+- [`Universal_Robots_ROS2_Driver`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Driver/tree/humble): Driver for the UR16e
+- [`abb_ros2`](https://github.com/PickNikRobotics/abb_ros2/tree/humble): Driver for the ABB robot
+ 
+- `ros-humble-rosbag2-storage-mcap`: Enabled MCAP storage format for rosbags
+- `open3d`: for pointcloud operations. Note that the used (and currently latest) version requires Numpy < 1.25. Used in `pcl_processing_ros2` and `lls_processing`.
+- [`pyads`](https://github.com/stlehmann/pyads): A Python wrapper for TwinCAT ADS library. Used in `data_gathering`
+- [`concave_hull`](https://github.com/panin-anan/concave_hull): A Python library to calculate concave hulls. Used in `pcl_processing_ros2`
+- [`pyransac3d`](https://github.com/leomariga/pyRANSAC-3D): A python library for the RANSAC algorithm. Used in`pcl_processing_ros2`
 
 ```bash
-git clone git@github.com:Luka140/data_gathering.git
+git clone git@github.com:Luka140/rws_motion_client.git
+git clone git@github.com:Luka140/data_gathering.git -b moving_grinder
 git clone git@github.com:Luka140/ferrobotics_acf.git -b humble
 git clone git@github.com:Luka140/stamped_std_msgs.git
-git clone git@github.com:Luka140/data_gathering_msgs.git
+git clone git@github.com:Luka140/data_gathering_msgs.git -b moving_grinder
 git clone git@github.com:Luka140/ur_trajectory_controller.git
-git clone git@github.com:Luka140/lls_processing.git
 git clone git@github.com:Luka140/scancontrol.git -b ros2-devel
-git clone git@github.com:panin-ananwa/pcl_processing_ros2.git
+git clone git@github.com:Luka140/lls_processing.git
+git clone git@github.com:panin-ananwa/pcl_processing_ros2.git -b moving_grinder
+git clone git@github.com:PickNikRobotics/abb_ros2.git -b humble
 sudo apt-get install ros-humble-ur
-```
-and compile all of the packages:
-To build, after cloning all the packages:
-```bash
-colcon build --symlink-install
-install/setup.bash
+sudo apt-get install ros-humble-rosbag2-storage-mcap
+
+pip install pyads==3.4.2
+pip install open3d==0.18.0
+pip install numpy==1.24.0
+pip install pyransac3d==0.6.0
 ```
 
 
 ## Nodes
 ### grinder_node
-This node acts as a interface to a Beckhoff PLC using pyads, controlling the RPM of the grinder. 
+This node acts as an interface to a Beckhoff PLC using pyads, controlling the RPM of the grinder. 
 
 Parameters:
 - `plc_target_ams`: AMS ID of the PLC.
