@@ -39,7 +39,7 @@ class TestCoordinator(Node):
         self.declare_parameter("pass_length", 0.)
         self.declare_parameter("feed_rate_threshold", 10.)
 
-        self.declare_parameter("belt_prime_force", 3,       ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("belt_prime_force", 5,       ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("belt_prime_rpm", 9000,      ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("belt_prime_feedrate", 10,   ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("belt_prime_passes", 2,      ParameterDescriptor(dynamic_typing=True))
@@ -47,7 +47,7 @@ class TestCoordinator(Node):
 
         self.declare_parameter("repeat_test_count", 1)
 
-        self.declare_parameter("wear_threshold", 10e6)
+        self.declare_parameter("wear_threshold", 5e7)
         self.declare_parameter("data_path", "")
         self.declare_parameter("wear_tracking_path", "")
         self.declare_parameter("test_tracker_path", "")
@@ -113,7 +113,7 @@ class TestCoordinator(Node):
         self.belt_prime_settings = self.create_setting_list([belt_prime_force], [belt_prime_rpm], [belt_prime_feedrate], [belt_prime_passes], [belt_prime_total_contact_time])[0]
 
         # Empty subscriptions for user input to trigger certain actions 
-        self.user_stop_testing      = self.create_subscription(Empty, "user/stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
+        # self.user_stop_testing      = self.create_subscription(Empty, "user/stop_testing", self.usr_stop_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
         self.user_continue_testing  = self.create_subscription(Empty, "user/continue_testing", self.usr_continue_testing, 1, callback_group=MutuallyExclusiveCallbackGroup())
         self.user_changed_belt      = self.create_subscription(Empty, "user/changed_belt", self.usr_changed_belt, 1, callback_group=MutuallyExclusiveCallbackGroup())
         self.user_ignore_error      = self.create_subscription(Empty, "user/ignore_error", self.usr_ignore_error, 1, callback_group=MutuallyExclusiveCallbackGroup())
@@ -152,7 +152,7 @@ class TestCoordinator(Node):
             self.prime_belt_countdown = self.create_timer(self.startup_delay, self.prime_belt)
 
     ############################################################################################################################################
-    # Main pipeline callback chain
+    # Main pipeline callback chain -- approximately listed in order of execution
     ############################################################################################################################################
 
     def start_rosbag(self, extra_suffix=''):
@@ -344,8 +344,8 @@ class TestCoordinator(Node):
             self.get_logger().info(f"Belt changed. Priming belt in {self.startup_delay} seconds")
             self.prime_belt_countdown = self.create_timer(self.startup_delay, self.prime_belt)    
 
-    def usr_stop_testing(self, _):
-        self.get_logger().info(f"The remaining tests will not be run. Exiting...")
+    # def usr_stop_testing(self, _):
+    #     self.get_logger().info(f"The remaining tests will not be run. Exiting...")
     
     def usr_continue_testing(self, _):
         if self.ready_for_next:
@@ -357,6 +357,7 @@ class TestCoordinator(Node):
 
     def usr_ignore_error(self, _):
         self.encountered_error = False 
+        self.get_logger().info("Ignoring test failure...")     
 
     ############################################################################################################################################
     # Methods related to tracking the belt wear 
@@ -372,6 +373,7 @@ class TestCoordinator(Node):
             f.write(f'{force},{rpm},{time},{area}\n')
         with open(self.performed_tests_path, 'a') as f:
             f.write(f'{force},{rpm},{time}\n')
+        self.get_logger().info(f"The belt wear metric was updated to {self.read_initial_wear()}")
 
     def read_initial_wear(self):
         wear_csv = pd.read_csv(self.belt_tracking_path, delimiter=',')
