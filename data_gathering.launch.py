@@ -22,7 +22,7 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "moving_grind_lowered_rpmv2_incr_time5"   
+    sample      = "moving_grind_lowered_rpm_12.5s"   
     plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
@@ -31,16 +31,16 @@ def generate_launch_description():
     pass_length = 100. / 1000
 
     # Main test settings 
-    force_settings = [6] 
+    force_settings = [5] 
     rpm_settings = [9500]
-    feed_rate_settings = [20, 30]
-    pass_count_settings = [12, 18]
-    repeat_test_count = 1      # Repeat a grind x times, and only scan afterwards. Then lost vol = lost vol / x. Detects lower volume. Set to 1 to scan after every grind 
+    feed_rate_settings = [10, 20, 30]
+    pass_count_settings = [5, 10, 15]
+    repeat_test_count = 1    # Repeat a grind x times, and only scan afterwards. Then lost vol = lost vol / x. Detects lower volume. Set to 1 to scan after every grind 
     
     # Set to true to test all combinations of force rpm and time settings. Otherwise they are paired elementwise.
     all_setting_permutations = False 
 
-    # Skip a certain number of tests by setting start_idx to nonzero 
+    # Skip a certain number of tests by setting start_idx to nonzero - ONLY WORKS FOR ALL PERMUTATIONS 
     start_idx = 0
     # start_idx = len(force_settings) * len(rpm_settings) * len(contact_times)  - 15
     
@@ -48,7 +48,7 @@ def generate_launch_description():
     initially_prime_new_belt = False    
 
     # Belt wear tracking file path  
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_11_grit_120.csv"
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_14_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. 
     # Higher values are likely fine too, but the domain of wear values throughout tests should remain consistent. 
@@ -59,12 +59,12 @@ def generate_launch_description():
     local_bbox_max = 0.35   # Maximum from distance the scanner. Any object further away is ignored. Makes post processing faster
 
     # Settings for priming a new belt. This is a single run that is performed if the belt is changed
-    belt_prime_force    = 7
+    belt_prime_force    = 6
     belt_prime_rpm      = 11000
     belt_prime_feedrate = 10
     belt_prime_passes = 2
 
-    feed_rate_threshold = 35.  # [mm/s]
+    feed_rate_threshold = 45.  # [mm/s]
 
     ###################################################### LAUNCH ###################################################################
 
