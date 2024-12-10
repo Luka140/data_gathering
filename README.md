@@ -1,5 +1,5 @@
 # Grinding model data gatherer -- Moving grinder
-# TODO CHANGES IN MOVING GRINDER VER
+
 ## Overview
 Code to perform automated testing of material removal using a pneumatic grinder. 
 It uses a laser line scanner on a UR16 to create a scan of the test plate. A grinder which is mounted on an ABB IRB 1200 is then engaged and makes a set number of grinding passes at a certain feed rate, force and RPM. 
