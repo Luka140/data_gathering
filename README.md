@@ -49,6 +49,13 @@ pip install numpy==1.24.0
 pip install pyransac3d==0.6.0
 ```
 
+## Launch
+To launch use 
+```bash
+ros2 launch data_gathering data_gathering.launch.py
+```
+This launch file is used to set all the test settings. 
+
 
 ## Nodes
 ### grinder_node
