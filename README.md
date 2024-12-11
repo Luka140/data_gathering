@@ -1,5 +1,5 @@
 # Grinding model data gatherer -- Moving grinder
-
+An overview of the interactions of all nodes in this environment is shown [below](#interaction-overview).
 ## Overview
 Code to perform automated testing of material removal using a pneumatic grinder. 
 It uses a laser line scanner on a UR16 to create a scan of the test plate. A grinder which is mounted on an ABB IRB 1200 is then engaged and makes a set number of grinding passes at a certain feed rate, force and RPM. 
@@ -122,6 +122,8 @@ Clients:
 - `calculate_volume_lost` [RequestPCLVolumeDiff](https://github.com/Luka140/data_gathering_msgs/blob/moving_grinder/srv/RequestPCLVolumeDiff.srv): Requests the comparison of two pointclouds and the calculation of lost volume.
 - `/rws_motion_client/start_grind_move` [StartGrindTest](https://github.com/Luka140/data_gathering_msgs/blob/moving_grinder/srv/StartGrindTest.srv): Requests a grind test with the next queued set of grinder settings. 
 
-# Overview [TODO UPDATE] 
-Normal arrows are topics, the double-sided arrows are services, and the dotted lines are only for data storage or monitoring purposes. 
-![data_gathering_architecture drawio](https://github.com/user-attachments/assets/81f2189e-e6ac-4c56-98fc-8f3556a72aa4)
+# Interaction Overview
+Normal arrows are topics and the double-sided arrows are services
+![OverviewV2_transp drawio](https://github.com/user-attachments/assets/d805c321-ed99-49f8-a3cf-ed5b6aa61c1f)
+
+
