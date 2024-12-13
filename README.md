@@ -124,6 +124,4 @@ Clients:
 
 # Interaction Overview
 Normal arrows are topics and the double-sided arrows are services
-![OverviewV2_transp drawio](https://github.com/user-attachments/assets/d805c321-ed99-49f8-a3cf-ed5b6aa61c1f)
-
-
+![data_gathering_moving_grinder drawio](https://github.com/user-attachments/assets/3abc280e-4294-447f-9d55-bc641d076220)
