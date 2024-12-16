@@ -32,7 +32,7 @@ git clone git@github.com:Luka140/data_gathering_msgs.git
 git clone git@github.com:Luka140/ur_trajectory_controller.git
 git clone git@github.com:Luka140/scancontrol.git -b ros2-devel
 git clone git@github.com:Luka140/lls_processing.git
-git clone git@github.com:panin-ananwa/pcl_processing_ros2.git
+git clone git@github.com:panin-anan/pcl_processing_ros2.git
 sudo apt-get install ros-humble-ur
 sudo apt-get install ros-humble-rosbag2-storage-mcap
 
