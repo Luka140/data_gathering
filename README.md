@@ -20,6 +20,8 @@ The following are the dependencies:
   
 - `ros-humble-rosbag2-storage-mcap`: Enabled MCAP storage format for rosbags
 - `open3d`: for pointcloud operations. Note that the used (and currently latest) version requires Numpy < 1.25. Used in `pcl_processing_ros2` and `lls_processing`.
+- `libsdl2-dev`: Simple DirectMedia Layer(SDL) 2.0 for keyboard repository
+- `keyboard_msgs`: keyboard ROS2 messages for UR trajectory recording. Used in `ur_trajectory_controller`
 - [`pyads`](https://github.com/stlehmann/pyads): A Python wrapper for TwinCAT ADS library. Used in `data_gathering`
 - [`concave_hull`](https://github.com/panin-anan/concave_hull): A Python library to calculate concave hulls. Used in `pcl_processing_ros2`
 - [`pyransac3d`](https://github.com/leomariga/pyRANSAC-3D): A python library for the RANSAC algorithm. Used in`pcl_processing_ros2`
@@ -35,6 +37,8 @@ git clone git@github.com:Luka140/lls_processing.git
 git clone git@github.com:panin-anan/pcl_processing_ros2.git
 sudo apt-get install ros-humble-ur
 sudo apt-get install ros-humble-rosbag2-storage-mcap
+sudo apt-get install libsdl2-dev
+git clone git@github.com:Luka140/ros2-keyboard.git
 
 pip install pyads==3.4.2
 pip install open3d==0.18.0
