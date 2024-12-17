@@ -22,7 +22,7 @@ def generate_launch_description():
     ###################################################### TEST SETTINGS ########################################################
 
     # ---------------------------------------------- DO NOT FORGET TO CHANGE THESE ----------------------------------------------
-    sample      = "dual_robot_rpm_investigation_quad_plate_2"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
+    sample      = "nukedDocker_test2"   # TODO BEFORE ANY SERIEUS TEST - CHANGE WEAR BACK!!!
     plate_thickness = 2.0 / 1000  # In meters 
     # ---------------------------------------------------------------------------------------------------------------------------
 
@@ -43,10 +43,10 @@ def generate_launch_description():
     
     # Prime the belt before starting the test. Recommended for a new belt, or a new plate.
     # The grinder behaves differently inside a groove compared to grinding a flat surface. 
-    initially_prime_new_belt = True    
+    initially_prime_new_belt = False    
 
     # Belt wear tracking file path  
-    belt_wear_path = "src/data_gathering/data/belt_data/beltid_10_grit_120.csv"
+    belt_wear_path = "src/data_gathering/data/belt_data/beltid_100_grit_120.csv"
 
     # This is approximately the maximum threshold up to which wear tests have been done. Higher values may still be fine 
     # but are not proven to be.
