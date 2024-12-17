@@ -101,7 +101,7 @@ Parameters:
 - `wear_threshold`: the threshold of the belt wear indicator after which the belt needs to be changed (default: 5e7)
 
 - `data_path`: path to the data storage location
-- `wear_tracking_path`: path to the storage location of the belt run history to calculate wear. Check for beltid_(id)_grit_(grit_size)
+- `wear_tracking_path`: path to the storage location of the belt run history to calculate wear. In launch file, check that .csv exists at the path and the name format should be: beltid_IDNum_grit_GritSize
 - `test_tracker_path`: path to file which tracks all tests that have been run
 - `record_path`: path to rosbag storage
 - `recorded_topics`: The topics which are recorded to the rosbag (default: ['-a']  <- all topics)
